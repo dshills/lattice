@@ -1,12 +1,30 @@
+import { lazy } from "react";
 import { Routes, Route } from "react-router";
 import { AppShell } from "./layouts/AppShell";
-import { HomePage } from "../pages/HomePage";
-import { BoardPage } from "../pages/BoardPage";
-import { ListPage } from "../pages/ListPage";
-import { GraphPage } from "../pages/GraphPage";
-import { ItemDetailPage } from "../pages/ItemDetailPage";
-import { SettingsPage } from "../pages/SettingsPage";
-import { NotFoundPage } from "../pages/NotFoundPage";
+
+const HomePage = lazy(() =>
+  import("../pages/HomePage").then((m) => ({ default: m.HomePage })),
+);
+const BoardPage = lazy(() =>
+  import("../pages/BoardPage").then((m) => ({ default: m.BoardPage })),
+);
+const ListPage = lazy(() =>
+  import("../pages/ListPage").then((m) => ({ default: m.ListPage })),
+);
+const GraphPage = lazy(() =>
+  import("../pages/GraphPage").then((m) => ({ default: m.GraphPage })),
+);
+const ItemDetailPage = lazy(() =>
+  import("../pages/ItemDetailPage").then((m) => ({
+    default: m.ItemDetailPage,
+  })),
+);
+const SettingsPage = lazy(() =>
+  import("../pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
+);
+const NotFoundPage = lazy(() =>
+  import("../pages/NotFoundPage").then((m) => ({ default: m.NotFoundPage })),
+);
 
 export function AppRouter() {
   return (

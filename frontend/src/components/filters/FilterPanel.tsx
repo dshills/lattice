@@ -17,7 +17,7 @@ export function FilterPanel({
   activeFilterCount,
 }: FilterPanelProps) {
   return (
-    <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4">
+    <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4" role="search" aria-label="Filter work items">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-700">Filters</h3>
         {activeFilterCount > 0 && (
@@ -31,11 +31,11 @@ export function FilterPanel({
       </div>
 
       {/* State filter */}
-      <div>
-        <label className="mb-1 block text-xs font-medium text-gray-500">
+      <fieldset>
+        <legend className="mb-1 block text-xs font-medium text-gray-500">
           State
-        </label>
-        <div className="flex gap-1">
+        </legend>
+        <div className="flex gap-1" role="group" aria-label="State filter">
           {STATES.map((state) => (
             <button
               key={state}
@@ -45,6 +45,7 @@ export function FilterPanel({
                   filters.state === state ? undefined : state,
                 )
               }
+              aria-pressed={filters.state === state}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                 filters.state === state
                   ? "bg-blue-100 text-blue-800"
@@ -55,7 +56,7 @@ export function FilterPanel({
             </button>
           ))}
         </div>
-      </div>
+      </fieldset>
 
       {/* Type filter */}
       <div>
@@ -86,11 +87,11 @@ export function FilterPanel({
       </div>
 
       {/* Blocked / Ready toggles */}
-      <div>
-        <label className="mb-1 block text-xs font-medium text-gray-500">
+      <fieldset>
+        <legend className="mb-1 block text-xs font-medium text-gray-500">
           Status
-        </label>
-        <div className="flex gap-2">
+        </legend>
+        <div className="flex gap-2" role="group" aria-label="Status filter">
           <button
             onClick={() =>
               setFilter(
@@ -99,6 +100,7 @@ export function FilterPanel({
               )
             }
             disabled={filters.is_ready === true}
+            aria-pressed={filters.is_blocked === true}
             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               filters.is_blocked
                 ? "bg-red-100 text-red-800"
@@ -112,6 +114,7 @@ export function FilterPanel({
               setFilter("is_ready", filters.is_ready ? undefined : true)
             }
             disabled={filters.is_blocked === true}
+            aria-pressed={filters.is_ready === true}
             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               filters.is_ready
                 ? "bg-green-100 text-green-800"
@@ -121,7 +124,7 @@ export function FilterPanel({
             Ready
           </button>
         </div>
-      </div>
+      </fieldset>
     </div>
   );
 }

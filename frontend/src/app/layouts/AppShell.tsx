@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { NavLink, Outlet } from "react-router";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router";
 import { CreateWorkItemForm } from "../../components/forms/CreateWorkItemForm";
+import { LoadingState } from "../../components/common/LoadingState";
 
 const navItems = [
   { to: "/", label: "Home" },
@@ -12,10 +13,22 @@ const navItems = [
 
 export function AppShell() {
   const [createOpen, setCreateOpen] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const location = useLocation();
+
+  useEffect(() => {
+    mainRef.current?.focus();
+  }, [location.pathname]);
 
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900">
-      <aside className="w-56 flex-shrink-0 border-r border-gray-200 bg-white">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-blue-600 focus:px-4 focus:py-2 focus:text-white"
+      >
+        Skip to content
+      </a>
+      <aside className="w-56 flex-shrink-0 border-r border-gray-200 bg-white" role="navigation" aria-label="Main navigation">
         <div className="px-4 py-5 text-lg font-semibold tracking-tight">
           Lattice
         </div>
@@ -55,8 +68,16 @@ export function AppShell() {
             </button>
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-6">
-          <Outlet />
+        <main
+          id="main-content"
+          ref={mainRef}
+          tabIndex={-1}
+          className="flex-1 overflow-auto p-6 outline-none"
+          aria-label="Page content"
+        >
+          <Suspense fallback={<LoadingState />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

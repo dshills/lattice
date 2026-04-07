@@ -32,15 +32,15 @@ export function BoardColumn({ state, items, disabled }: BoardColumnProps) {
         </span>
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto px-2 pb-2">
-        {items.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-400">
-            No items
-          </p>
-        ) : (
-          items.map((item) => <DraggableCard key={item.id} item={item} />)
-        )}
-      </div>
+      {items.length === 0 ? (
+        <div className="flex-1 px-2 pb-2">
+          <p className="py-8 text-center text-sm text-gray-400">No items</p>
+        </div>
+      ) : (
+        <div className="flex-1 space-y-2 overflow-y-auto px-2 pb-2" role="list" aria-label={`${STATE_LABELS[state]} items`}>
+          {items.map((item) => <DraggableCard key={item.id} item={item} />)}
+        </div>
+      )}
 
       {state === "NotDone" && <QuickAdd />}
     </div>
