@@ -107,41 +107,22 @@ func (h *Handler) UpdateWorkItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If state is being changed, validate the transition.
-	if req.State != nil {
-		existing, err := h.WorkItems.Get(r.Context(), id)
-		if err != nil {
-			mapDomainError(w, err)
-			return
-		}
-		newState := domain.State(*req.State)
-		if err := domain.ValidateTransition(existing.State, newState, req.Override, isAdmin(r.Context())); err != nil {
-			mapDomainError(w, err)
-			return
-		}
-	}
-
-	item := &domain.WorkItem{ID: id}
-	if req.Title != nil {
-		item.Title = *req.Title
-	}
-	if req.Description != nil {
-		item.Description = *req.Description
+	params := store.UpdateParams{
+		Title:       req.Title,
+		Description: req.Description,
+		Type:        req.Type,
+		Tags:        req.Tags,
+		ParentID:    req.ParentID,
+		Override:    req.Override,
+		IsAdmin:     isAdmin(r.Context()),
 	}
 	if req.State != nil {
-		item.State = domain.State(*req.State)
-	}
-	if req.Type != nil {
-		item.Type = *req.Type
-	}
-	if req.Tags != nil {
-		item.Tags = req.Tags
-	}
-	if req.ParentID != nil {
-		item.ParentID = req.ParentID
+		s := domain.State(*req.State)
+		params.State = &s
 	}
 
-	if err := h.WorkItems.Update(r.Context(), item); err != nil {
+	item, err := h.WorkItems.Update(r.Context(), id, params)
+	if err != nil {
 		mapDomainError(w, err)
 		return
 	}
@@ -221,6 +202,10 @@ func parseListFilter(r *http.Request) (store.ListFilter, error) {
 			return f, fmt.Errorf("invalid is_ready %q", v)
 		}
 		f.IsReady = &b
+	}
+
+	if f.IsBlocked != nil && f.IsReady != nil {
+		return f, fmt.Errorf("is_blocked and is_ready cannot be used together")
 	}
 
 	f.Page = 1

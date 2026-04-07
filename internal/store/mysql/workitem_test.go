@@ -117,17 +117,15 @@ func TestUpdate(t *testing.T) {
 	item.Tags = []string{"old"}
 	require.NoError(t, s.Create(ctx, item))
 
-	update := &domain.WorkItem{
-		ID:    item.ID,
-		Title: "After Update",
-		State: domain.InProgress,
+	title := "After Update"
+	state := domain.InProgress
+	got, err := s.Update(ctx, item.ID, store.UpdateParams{
+		Title: &title,
+		State: &state,
 		Tags:  []string{"new1", "new2"},
-	}
-	err := s.Update(ctx, update)
+	})
 	require.NoError(t, err)
 
-	got, err := s.Get(ctx, item.ID)
-	require.NoError(t, err)
 	assert.Equal(t, "After Update", got.Title)
 	assert.Equal(t, domain.InProgress, got.State)
 	assert.Equal(t, []string{"new1", "new2"}, got.Tags)
@@ -139,8 +137,8 @@ func TestUpdateNotFound(t *testing.T) {
 	s := mysqlstore.NewWorkItemStore(db)
 	ctx := context.Background()
 
-	update := &domain.WorkItem{ID: "nonexistent", Title: "x"}
-	err := s.Update(ctx, update)
+	title := "x"
+	_, err := s.Update(ctx, "nonexistent", store.UpdateParams{Title: &title})
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
@@ -211,13 +209,14 @@ func TestListFilterByState(t *testing.T) {
 	item := newItem("Progressing")
 	require.NoError(t, s.Create(ctx, item))
 
-	update := &domain.WorkItem{ID: item.ID, State: domain.InProgress}
-	require.NoError(t, s.Update(ctx, update))
+	state := domain.InProgress
+	_, err := s.Update(ctx, item.ID, store.UpdateParams{State: &state})
+	require.NoError(t, err)
 
 	require.NoError(t, s.Create(ctx, newItem("Still NotDone")))
 
-	state := domain.InProgress
-	result, err := s.List(ctx, store.ListFilter{State: &state, Page: 1, PageSize: 10})
+	filterState := domain.InProgress
+	result, err := s.List(ctx, store.ListFilter{State: &filterState, Page: 1, PageSize: 10})
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Total)
 	assert.Equal(t, domain.InProgress, result.Items[0].State)
@@ -378,8 +377,8 @@ func TestUpdateClearsTags(t *testing.T) {
 	item.Tags = []string{"a", "b"}
 	require.NoError(t, s.Create(ctx, item))
 
-	update := &domain.WorkItem{ID: item.ID, Tags: []string{}}
-	require.NoError(t, s.Update(ctx, update))
+	_, err := s.Update(ctx, item.ID, store.UpdateParams{Tags: []string{}})
+	require.NoError(t, err)
 
 	got, err := s.Get(ctx, item.ID)
 	require.NoError(t, err)

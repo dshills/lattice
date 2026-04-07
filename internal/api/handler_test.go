@@ -44,19 +44,28 @@ func (m *mockWorkItemStore) Get(_ context.Context, id string) (*domain.WorkItem,
 	return item, nil
 }
 
-func (m *mockWorkItemStore) Update(_ context.Context, item *domain.WorkItem) error {
-	existing, ok := m.items[item.ID]
+func (m *mockWorkItemStore) Update(_ context.Context, id string, params store.UpdateParams) (*domain.WorkItem, error) {
+	existing, ok := m.items[id]
 	if !ok {
-		return domain.ErrNotFound
+		return nil, domain.ErrNotFound
 	}
-	if item.Title != "" {
-		existing.Title = item.Title
+	if params.State != nil {
+		if err := domain.ValidateTransition(existing.State, *params.State, params.Override, params.IsAdmin); err != nil {
+			return nil, err
+		}
+		existing.State = *params.State
 	}
-	if item.State != "" {
-		existing.State = item.State
+	if params.Title != nil {
+		existing.Title = *params.Title
 	}
-	*item = *existing
-	return nil
+	if params.Description != nil {
+		existing.Description = *params.Description
+	}
+	if params.Type != nil {
+		existing.Type = *params.Type
+	}
+	result := *existing
+	return &result, nil
 }
 
 func (m *mockWorkItemStore) Delete(_ context.Context, id string) error {

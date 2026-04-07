@@ -9,6 +9,7 @@ import (
 
 	"github.com/dshills/lattice/internal/domain"
 	"github.com/dshills/lattice/internal/store"
+
 	"github.com/google/uuid"
 )
 
@@ -108,75 +109,79 @@ func (s *WorkItemStore) Get(ctx context.Context, id string) (*domain.WorkItem, e
 	return item, nil
 }
 
-// Update applies a partial update to an existing WorkItem. Tags are replaced
-// entirely if provided. The store always overwrites updated_at.
-func (s *WorkItemStore) Update(ctx context.Context, item *domain.WorkItem) error {
+// Update applies a partial update to an existing WorkItem. Only non-nil fields
+// in params are changed. State transitions are validated under the row lock to
+// prevent TOCTOU races. Returns the updated WorkItem.
+func (s *WorkItemStore) Update(ctx context.Context, id string, params store.UpdateParams) (*domain.WorkItem, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Fetch current state for merge.
+	// Fetch current state under lock.
 	row := tx.QueryRowContext(ctx,
 		`SELECT id, title, description, state, type, parent_id, created_at, updated_at
-		 FROM work_items WHERE id = ? FOR UPDATE`, item.ID)
+		 FROM work_items WHERE id = ? FOR UPDATE`, id)
 
 	existing, err := scanWorkItem(row)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Merge fields: only overwrite non-zero caller values.
-	if item.Title != "" {
-		existing.Title = item.Title
+	// Validate state transition under the lock (prevents TOCTOU race).
+	if params.State != nil {
+		if err := domain.ValidateTransition(existing.State, *params.State, params.Override, params.IsAdmin); err != nil {
+			return nil, err
+		}
+		existing.State = *params.State
 	}
-	if item.Description != "" {
-		existing.Description = item.Description
+
+	// Merge fields: only overwrite non-nil caller values.
+	if params.Title != nil {
+		existing.Title = *params.Title
 	}
-	if item.State != "" {
-		existing.State = item.State
+	if params.Description != nil {
+		existing.Description = *params.Description
 	}
-	if item.Type != "" {
-		existing.Type = item.Type
+	if params.Type != nil {
+		existing.Type = *params.Type
 	}
-	if item.ParentID != nil {
-		if *item.ParentID == "" {
+	if params.ParentID != nil {
+		if *params.ParentID == "" {
 			existing.ParentID = nil // explicitly unset parent
 		} else {
-			existing.ParentID = item.ParentID
+			existing.ParentID = params.ParentID
 		}
 	}
 	existing.UpdatedAt = time.Now().UTC()
 
 	if err := existing.Validate(); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Validate parent exists and check for cycles if parent changed.
-	if item.ParentID != nil && existing.ParentID != nil {
+	if params.ParentID != nil && existing.ParentID != nil {
 		exists, err := rowExists(ctx, tx, "SELECT 1 FROM work_items WHERE id = ?", *existing.ParentID)
 		if err != nil {
-			return fmt.Errorf("check parent: %w", err)
+			return nil, fmt.Errorf("check parent: %w", err)
 		}
 		if !exists {
-			return fmt.Errorf("%w: parent_id %q does not exist", domain.ErrValidation, *existing.ParentID)
+			return nil, fmt.Errorf("%w: parent_id %q does not exist", domain.ErrValidation, *existing.ParentID)
 		}
-		// Check for cycle: would setting this parent create a loop?
 		hasCycle, err := hasCycle(ctx, tx, existing.ID, *existing.ParentID)
 		if err != nil {
-			return fmt.Errorf("check parent cycle: %w", err)
+			return nil, fmt.Errorf("check parent cycle: %w", err)
 		}
 		if hasCycle {
-			return fmt.Errorf("%w: setting parent_id would create a cycle", domain.ErrValidation)
+			return nil, fmt.Errorf("%w: setting parent_id would create a cycle", domain.ErrValidation)
 		}
-		// Check depth limit.
 		depth, err := ancestorDepth(ctx, tx, *existing.ParentID)
 		if err != nil {
-			return fmt.Errorf("check depth: %w", err)
+			return nil, fmt.Errorf("check depth: %w", err)
 		}
 		if depth+1 > domain.MaxHierarchyDepth {
-			return fmt.Errorf("%w: hierarchy depth would exceed %d levels", domain.ErrValidation, domain.MaxHierarchyDepth)
+			return nil, fmt.Errorf("%w: hierarchy depth would exceed %d levels", domain.ErrValidation, domain.MaxHierarchyDepth)
 		}
 	}
 
@@ -188,39 +193,37 @@ func (s *WorkItemStore) Update(ctx context.Context, item *domain.WorkItem) error
 		existing.UpdatedAt, existing.ID,
 	)
 	if err != nil {
-		return fmt.Errorf("update work_item: %w", err)
+		return nil, fmt.Errorf("update work_item: %w", err)
 	}
 
 	// Replace tags if caller provided any (including empty slice to clear).
-	if item.Tags != nil {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM work_item_tags WHERE item_id = ?", item.ID); err != nil {
-			return fmt.Errorf("delete tags: %w", err)
+	if params.Tags != nil {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM work_item_tags WHERE item_id = ?", id); err != nil {
+			return nil, fmt.Errorf("delete tags: %w", err)
 		}
-		if err := insertTags(ctx, tx, item.ID, item.Tags); err != nil {
-			return err
+		if err := insertTags(ctx, tx, id, params.Tags); err != nil {
+			return nil, err
 		}
 	}
 
 	// Load tags and relationships within the transaction for consistency.
-	tags, err := loadTags(ctx, tx, item.ID)
+	tags, err := loadTags(ctx, tx, id)
 	if err != nil {
-		return fmt.Errorf("reload tags: %w", err)
+		return nil, fmt.Errorf("reload tags: %w", err)
 	}
 	existing.Tags = tags
 
-	rels, err := loadRelationships(ctx, tx, item.ID)
+	rels, err := loadRelationships(ctx, tx, id)
 	if err != nil {
-		return fmt.Errorf("reload relationships: %w", err)
+		return nil, fmt.Errorf("reload relationships: %w", err)
 	}
 	existing.Relationships = rels
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit update: %w", err)
+		return nil, fmt.Errorf("commit update: %w", err)
 	}
 
-	// Only mutate the caller's object after successful commit.
-	*item = *existing
-	return nil
+	return existing, nil
 }
 
 // Delete atomically removes a WorkItem and cascades: removes relationships
@@ -242,25 +245,12 @@ func (s *WorkItemStore) Delete(ctx context.Context, id string) error {
 		return domain.ErrNotFound
 	}
 
-	// Cascade: relationships where source or target.
-	if _, err := tx.ExecContext(ctx, "DELETE FROM work_item_relationships WHERE source_id = ?", id); err != nil {
-		return fmt.Errorf("delete source relationships: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM work_item_relationships WHERE target_id = ?", id); err != nil {
-		return fmt.Errorf("delete target relationships: %w", err)
-	}
-
-	// Null out children's parent_id.
+	// Null out children's parent_id (not covered by ON DELETE CASCADE).
 	if _, err := tx.ExecContext(ctx, "UPDATE work_items SET parent_id = NULL WHERE parent_id = ?", id); err != nil {
 		return fmt.Errorf("null children parent_id: %w", err)
 	}
 
-	// Delete tags.
-	if _, err := tx.ExecContext(ctx, "DELETE FROM work_item_tags WHERE item_id = ?", id); err != nil {
-		return fmt.Errorf("delete tags: %w", err)
-	}
-
-	// Delete item.
+	// Delete item — tags and relationships are removed by ON DELETE CASCADE.
 	if _, err := tx.ExecContext(ctx, "DELETE FROM work_items WHERE id = ?", id); err != nil {
 		return fmt.Errorf("delete work_item: %w", err)
 	}
@@ -270,14 +260,10 @@ func (s *WorkItemStore) Delete(ctx context.Context, id string) error {
 
 // List retrieves a filtered, paginated list of WorkItems.
 func (s *WorkItemStore) List(ctx context.Context, filter store.ListFilter) (*store.ListResult, error) {
-	const maxPageSize = 100
 	page := max(filter.Page, 1)
 	pageSize := filter.PageSize
 	if pageSize < 1 {
-		pageSize = 20
-	}
-	if pageSize > maxPageSize {
-		pageSize = maxPageSize
+		pageSize = 50
 	}
 
 	where, args := buildWhereClause(filter)

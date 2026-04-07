@@ -57,7 +57,10 @@ func (d *CycleDetector) DetectCycles(ctx context.Context, workItemID string) ([]
 				continue
 			}
 			seen[neighbor] = true
-			dfs(neighbor, append(path, neighbor))
+			newPath := make([]string, len(path)+1)
+			copy(newPath, path)
+			newPath[len(path)] = neighbor
+			dfs(neighbor, newPath)
 			seen[neighbor] = false
 		}
 	}

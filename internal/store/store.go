@@ -6,11 +6,26 @@ import (
 	"github.com/dshills/lattice/internal/domain"
 )
 
+// UpdateParams carries the fields to update on a WorkItem. Nil pointer fields
+// mean "do not change". Non-nil pointer fields set the value (including empty
+// string to clear a field). Tags nil = don't change; non-nil = replace entirely.
+// ParentID: nil = don't change, pointer to "" = unset parent.
+type UpdateParams struct {
+	Title       *string
+	Description *string
+	State       *domain.State
+	Type        *string
+	Tags        []string // nil = don't change, non-nil = replace
+	ParentID    *string  // nil = don't change, &"" = unset
+	Override    bool
+	IsAdmin     bool
+}
+
 // WorkItemStore defines persistence operations for WorkItems.
 type WorkItemStore interface {
 	Create(ctx context.Context, item *domain.WorkItem) error
 	Get(ctx context.Context, id string) (*domain.WorkItem, error)
-	Update(ctx context.Context, item *domain.WorkItem) error
+	Update(ctx context.Context, id string, params UpdateParams) (*domain.WorkItem, error)
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context, filter ListFilter) (*ListResult, error)
 	AncestorDepth(ctx context.Context, parentID string) (int, error)
