@@ -18,15 +18,15 @@ import (
 )
 
 func main() {
-	dsn := os.Getenv("ATLAS_DSN")
+	dsn := os.Getenv("LATTICE_DSN")
 	if dsn == "" {
-		log.Fatal("ATLAS_DSN environment variable is required")
+		log.Fatal("LATTICE_DSN environment variable is required")
 	}
-	addr := os.Getenv("ATLAS_ADDR")
+	addr := os.Getenv("LATTICE_ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
-	migrationsDir := os.Getenv("ATLAS_MIGRATIONS_DIR")
+	migrationsDir := os.Getenv("LATTICE_MIGRATIONS_DIR")
 	if migrationsDir == "" {
 		migrationsDir = "migrations"
 	}

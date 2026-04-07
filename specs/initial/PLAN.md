@@ -1,6 +1,6 @@
 # PLAN.md
 
-# Atlas — Phased Implementation Plan
+# Lattice — Phased Implementation Plan
 
 ## Technology Stack
 
@@ -17,7 +17,7 @@
 ```
 lattice/
 ├── cmd/
-│   └── atlas/
+│   └── lattice/
 │       └── main.go              # entrypoint, config, server startup
 ├── internal/
 │   ├── domain/
@@ -300,7 +300,7 @@ type CycleDetector interface {
    - `DELETE /workitems/{id}/relationships/{rel_id}` — Remove Relationship
    - `GET /workitems/{id}/cycles` — Detect Cycles
 
-5. **Wire up router** (`cmd/atlas/main.go`)
+5. **Wire up router** (`cmd/lattice/main.go`)
    - Parse config (DB DSN, listen address) from env vars
    - Initialize DB connection, run migrations
    - Register routes with `http.ServeMux`

@@ -45,7 +45,7 @@ type Relationship struct {
 	TargetID string           `json:"target_id"`
 }
 
-// WorkItem is the fundamental unit of work in Atlas.
+// WorkItem is the fundamental unit of work in Lattice.
 type WorkItem struct {
 	ID            string         `json:"id"`
 	Title         string         `json:"title"`

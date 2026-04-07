@@ -1,8 +1,8 @@
 # SPEC.md
 
-# Project: Atlas (Working Name)
+# Project: Lattice
 ## Purpose
-Atlas is a graph-based work tracking system designed to replace traditional tools like Jira. It uses a fixed data model and a strict three-state lifecycle to keep the user-facing interface simple while modeling complex development workflows through relationships and views.
+Lattice is a graph-based work tracking system designed to replace traditional tools like Jira. It uses a fixed data model and a strict three-state lifecycle to keep the user-facing interface simple while modeling complex development workflows through relationships and views.
 
 ---
 

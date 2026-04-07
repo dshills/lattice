@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Lattice** (working name: Atlas) is a lightweight, graph-based work tracking system. It replaces tools like Jira with a minimal interface: only three states (NotDone, InProgress, Completed), free-form tags, and first-class relationships between work items. Complexity lives in the data model and views, never in user-facing workflows.
+**Lattice** is a lightweight, graph-based work tracking system. It replaces tools like Jira with a minimal interface: only three states (NotDone, InProgress, Completed), free-form tags, and first-class relationships between work items. Complexity lives in the data model and views, never in user-facing workflows.
 
 The spec lives at `specs/initial/SPEC.md`.
 
