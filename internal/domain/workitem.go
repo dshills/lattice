@@ -13,6 +13,7 @@ const (
 	MaxTypeLen        = 100
 	MaxTagLen         = 100
 	MaxTagCount       = 50
+	MaxHierarchyDepth = 100
 )
 
 // RelationshipType represents a directed link type between WorkItems.

@@ -46,7 +46,7 @@ func (s *WorkItemStore) Create(ctx context.Context, item *domain.WorkItem) error
 		item.ParentID = nil
 	}
 
-	// Validate parent exists if specified.
+	// Validate parent exists, check depth limit, and check for cycles.
 	if item.ParentID != nil {
 		exists, err := rowExists(ctx, tx, "SELECT 1 FROM work_items WHERE id = ?", *item.ParentID)
 		if err != nil {
@@ -54,6 +54,13 @@ func (s *WorkItemStore) Create(ctx context.Context, item *domain.WorkItem) error
 		}
 		if !exists {
 			return fmt.Errorf("%w: parent_id %q does not exist", domain.ErrValidation, *item.ParentID)
+		}
+		depth, err := ancestorDepth(ctx, tx, *item.ParentID)
+		if err != nil {
+			return fmt.Errorf("check depth: %w", err)
+		}
+		if depth+1 > domain.MaxHierarchyDepth {
+			return fmt.Errorf("%w: hierarchy depth would exceed %d levels", domain.ErrValidation, domain.MaxHierarchyDepth)
 		}
 	}
 
@@ -162,6 +169,14 @@ func (s *WorkItemStore) Update(ctx context.Context, item *domain.WorkItem) error
 		}
 		if hasCycle {
 			return fmt.Errorf("%w: setting parent_id would create a cycle", domain.ErrValidation)
+		}
+		// Check depth limit.
+		depth, err := ancestorDepth(ctx, tx, *existing.ParentID)
+		if err != nil {
+			return fmt.Errorf("check depth: %w", err)
+		}
+		if depth+1 > domain.MaxHierarchyDepth {
+			return fmt.Errorf("%w: hierarchy depth would exceed %d levels", domain.ErrValidation, domain.MaxHierarchyDepth)
 		}
 	}
 
