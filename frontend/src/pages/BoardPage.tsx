@@ -14,6 +14,8 @@ import { useFilters } from "../hooks/useFilters";
 import { BoardColumn } from "../components/workitems/BoardColumn";
 import { WorkItemCard } from "../components/workitems/WorkItemCard";
 import { FilterPanel } from "../components/filters/FilterPanel";
+import { LoadingState } from "../components/common/LoadingState";
+import { ErrorState } from "../components/common/ErrorState";
 import { STATES } from "../lib/constants";
 import { isAdmin } from "../lib/config";
 import type { WorkItem, WorkItemState } from "../lib/types";
@@ -41,7 +43,7 @@ function getAllowedTargets(
 
 export function BoardPage() {
   const { filters, setFilter, clearFilters, activeFilterCount } = useFilters();
-  const { data, isLoading, error } = useWorkItems({
+  const { data, isLoading, error, refetch } = useWorkItems({
     ...filters,
     page_size: 200,
   });
@@ -104,13 +106,11 @@ export function BoardPage() {
   );
 
   if (isLoading) {
-    return <p className="text-gray-500">Loading board...</p>;
+    return <LoadingState />;
   }
 
   if (error) {
-    return (
-      <p className="text-red-500">Failed to load board: {error.message}</p>
-    );
+    return <ErrorState message={error.message} onRetry={() => refetch()} />;
   }
 
   return (

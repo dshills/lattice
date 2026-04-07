@@ -4,6 +4,8 @@ import { useWorkItem } from "../hooks/useWorkItems";
 import { useWorkItemMutations } from "../hooks/useWorkItemMutations";
 import { useRelationships } from "../hooks/useRelationships";
 import { InlineEditableText } from "../components/common/InlineEditableText";
+import { LoadingState } from "../components/common/LoadingState";
+import { ErrorState } from "../components/common/ErrorState";
 import { StateSelector } from "../components/workitems/StateSelector";
 import { TagEditor } from "../components/forms/TagEditor";
 import { ParentChildPanel } from "../components/forms/ParentChildPanel";
@@ -15,7 +17,7 @@ import type { RelationshipType, WorkItemState } from "../lib/types";
 export function ItemDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: item, isLoading, error } = useWorkItem(id!);
+  const { data: item, isLoading, error, refetch } = useWorkItem(id!);
   const { updateMutation, deleteMutation } = useWorkItemMutations();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [cycleWarning, setCycleWarning] = useState<string | null>(null);
@@ -91,11 +93,11 @@ export function ItemDetailPage() {
   }, [id, deleteMutation, navigate]);
 
   if (isLoading) {
-    return <p className="text-gray-500">Loading...</p>;
+    return <LoadingState />;
   }
 
   if (error || !item) {
-    return <p className="text-red-500">Item not found</p>;
+    return <ErrorState message={error?.message ?? "Item not found"} onRetry={() => refetch()} />;
   }
 
   return (

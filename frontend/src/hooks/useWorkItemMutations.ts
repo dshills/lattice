@@ -4,10 +4,13 @@ import {
   updateWorkItem,
   deleteWorkItem,
 } from "../lib/api/workitems";
+import { useToast } from "../components/common/Toast";
+import { toastError } from "../lib/toastError";
 import type { CreateWorkItemInput, UpdateWorkItemInput } from "../lib/types";
 
 export function useWorkItemMutations() {
   const queryClient = useQueryClient();
+  const { addToast } = useToast();
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["workitems"] });
@@ -15,7 +18,11 @@ export function useWorkItemMutations() {
 
   const createMutation = useMutation({
     mutationFn: (input: CreateWorkItemInput) => createWorkItem(input),
-    onSuccess: () => invalidate(),
+    onSuccess: () => {
+      invalidate();
+      addToast("Work item created", "success");
+    },
+    onError: (err) => toastError(addToast, err),
   });
 
   const updateMutation = useMutation({
@@ -27,11 +34,16 @@ export function useWorkItemMutations() {
       });
       invalidate();
     },
+    onError: (err) => toastError(addToast, err),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteWorkItem(id),
-    onSuccess: () => invalidate(),
+    onSuccess: () => {
+      invalidate();
+      addToast("Work item deleted", "success");
+    },
+    onError: (err) => toastError(addToast, err),
   });
 
   return { createMutation, updateMutation, deleteMutation };

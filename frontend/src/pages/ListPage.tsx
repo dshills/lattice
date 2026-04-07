@@ -4,6 +4,9 @@ import { useFilters } from "../hooks/useFilters";
 import { FilterPanel } from "../components/filters/FilterPanel";
 import { SearchInput } from "../components/filters/SearchInput";
 import { WorkItemRow } from "../components/workitems/WorkItemRow";
+import { LoadingState } from "../components/common/LoadingState";
+import { ErrorState } from "../components/common/ErrorState";
+import { EmptyState } from "../components/common/EmptyState";
 import type { WorkItem } from "../lib/types";
 
 type SortField = "title" | "state" | "type" | "updated_at";
@@ -39,7 +42,7 @@ export function ListPage() {
   const [sortField, setSortField] = useState<SortField>("updated_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  const { data, isLoading, error } = useWorkItems({
+  const { data, isLoading, error, refetch } = useWorkItems({
     ...filters,
     page_size: pageSize,
   });
@@ -99,13 +102,14 @@ export function ListPage() {
         </div>
 
         {isLoading ? (
-          <p className="text-gray-500">Loading...</p>
+          <LoadingState />
         ) : error ? (
-          <p className="text-red-500">Failed to load items</p>
+          <ErrorState message={error.message} onRetry={() => refetch()} />
         ) : items.length === 0 ? (
-          <p className="py-12 text-center text-gray-400">
-            No items match your filters
-          </p>
+          <EmptyState
+            title="No items found"
+            description="No items match your current filters"
+          />
         ) : (
           <>
             <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">

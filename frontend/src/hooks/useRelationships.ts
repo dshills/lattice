@@ -4,6 +4,8 @@ import {
   removeRelationship,
 } from "../lib/api/relationships";
 import { detectCycles, type CycleResult } from "../lib/api/cycles";
+import { useToast } from "../components/common/Toast";
+import { toastError } from "../lib/toastError";
 import type { AddRelationshipInput } from "../lib/types";
 
 interface UseRelationshipsOptions {
@@ -15,6 +17,7 @@ export function useRelationships(
   options?: UseRelationshipsOptions,
 ) {
   const queryClient = useQueryClient();
+  const { addToast } = useToast();
 
   const invalidateSource = () => {
     queryClient.invalidateQueries({ queryKey: ["workitem", sourceId] });
@@ -26,6 +29,7 @@ export function useRelationships(
       addRelationship(sourceId, input),
     onSuccess: async (_data, variables) => {
       invalidateSource();
+      addToast("Relationship added", "success");
 
       if (
         variables.type === "depends_on" ||
@@ -41,12 +45,17 @@ export function useRelationships(
         }
       }
     },
+    onError: (err) => toastError(addToast, err),
   });
 
   const removeRelationshipMutation = useMutation({
     mutationFn: (relationshipId: string) =>
       removeRelationship(sourceId, relationshipId),
-    onSuccess: () => invalidateSource(),
+    onSuccess: () => {
+      invalidateSource();
+      addToast("Relationship removed", "success");
+    },
+    onError: (err) => toastError(addToast, err),
   });
 
   return { addRelationshipMutation, removeRelationshipMutation };
