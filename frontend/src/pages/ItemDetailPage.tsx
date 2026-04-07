@@ -2,13 +2,15 @@ import { useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useWorkItem } from "../hooks/useWorkItems";
 import { useWorkItemMutations } from "../hooks/useWorkItemMutations";
+import { useRelationships } from "../hooks/useRelationships";
 import { InlineEditableText } from "../components/common/InlineEditableText";
 import { StateSelector } from "../components/workitems/StateSelector";
 import { TagEditor } from "../components/forms/TagEditor";
 import { ParentChildPanel } from "../components/forms/ParentChildPanel";
 import { RelationshipSummary } from "../components/workitems/RelationshipSummary";
+import { RelationshipEditor } from "../components/forms/RelationshipEditor";
 import { ConfirmDialog } from "../components/common/ConfirmDialog";
-import type { WorkItemState } from "../lib/types";
+import type { RelationshipType, WorkItemState } from "../lib/types";
 
 export function ItemDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -16,6 +18,15 @@ export function ItemDetailPage() {
   const { data: item, isLoading, error } = useWorkItem(id!);
   const { updateMutation, deleteMutation } = useWorkItemMutations();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [cycleWarning, setCycleWarning] = useState<string | null>(null);
+  const { addRelationshipMutation, removeRelationshipMutation } =
+    useRelationships(id!, {
+      onCycleDetected: (result) => {
+        const msg = `Dependency cycle detected: ${result.cycle.map((c) => c.slice(0, 8)).join(" -> ")}`;
+        setCycleWarning(msg);
+        setTimeout(() => setCycleWarning(null), 8000);
+      },
+    });
 
   const saveField = useCallback(
     (field: string) => async (value: string) => {
@@ -58,6 +69,20 @@ export function ItemDetailPage() {
     [id, updateMutation],
   );
 
+  const handleAddRelationship = useCallback(
+    (type: RelationshipType, targetId: string) => {
+      addRelationshipMutation.mutate({ type, target_id: targetId });
+    },
+    [addRelationshipMutation],
+  );
+
+  const handleRemoveRelationship = useCallback(
+    (relationshipId: string) => {
+      removeRelationshipMutation.mutate(relationshipId);
+    },
+    [removeRelationshipMutation],
+  );
+
   const handleDelete = useCallback(() => {
     if (!id) return;
     deleteMutation.mutate(id, {
@@ -75,6 +100,13 @@ export function ItemDetailPage() {
 
   return (
     <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[1fr_300px]">
+      {/* Cycle warning toast */}
+      {cycleWarning && (
+        <div className="col-span-full rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+          {cycleWarning}
+        </div>
+      )}
+
       {/* Main content */}
       <div className="space-y-6">
         <InlineEditableText
@@ -95,7 +127,17 @@ export function ItemDetailPage() {
           <h3 className="mb-2 text-sm font-semibold text-gray-500">
             Relationships
           </h3>
-          <RelationshipSummary relationships={item.relationships} />
+          <RelationshipSummary
+            relationships={item.relationships}
+            onRemove={handleRemoveRelationship}
+          />
+          <div className="mt-3">
+            <RelationshipEditor
+              sourceId={item.id}
+              onAdd={handleAddRelationship}
+              isPending={addRelationshipMutation.isPending}
+            />
+          </div>
         </div>
       </div>
 
