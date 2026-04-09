@@ -4,7 +4,7 @@ Lattice is a lightweight, graph-based work tracking system. It replaces heavywei
 
 ## Key Concepts
 
-- **Three states only:** `NotDone` -> `InProgress` -> `Completed`. Forward transitions are allowed one step at a time. Backward transitions require admin override.
+- **Three states only:** `NotDone` -> `InProgress` -> `Completed`. Forward transitions are one step at a time. Any other transition (backward or skip) requires `override: true`.
 - **Relationships are first-class:** `blocks`, `depends_on`, `relates_to`, `duplicate_of`. Relationships are directed, unique per (source, target, type), and support reverse lookup.
 - **Tags are metadata:** Free-form strings that never affect state transitions or behavior.
 - **Hierarchy via parent_id:** Each work item can have one parent. Max depth is 100 levels. Circular parent chains are rejected.
@@ -13,10 +13,9 @@ Lattice is a lightweight, graph-based work tracking system. It replaces heavywei
 
 ## Technology
 
-- **Language:** Go 1.23+
+- **Backend:** Go 1.23+, `net/http` with Go 1.22+ method-based routing, `database/sql` (no ORM)
+- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS, TanStack Query, React Flow, dnd-kit
 - **Database:** MySQL 8.0+ (recursive CTEs required)
-- **HTTP Router:** `net/http` with Go 1.22+ method-based routing
-- **No ORM:** Uses `database/sql` with parameterized queries
 
 ## Project Structure
 
@@ -24,31 +23,26 @@ Lattice is a lightweight, graph-based work tracking system. It replaces heavywei
 lattice/
 ├── cmd/lattice/main.go           # Server entrypoint, config, graceful shutdown
 ├── internal/
-│   ├── api/
-│   │   ├── errors.go             # Domain error -> HTTP status mapping
-│   │   ├── handler.go            # All 8 HTTP handlers + route registration
-│   │   ├── handler_test.go       # Handler unit tests (mock stores)
-│   │   ├── integration_test.go   # End-to-end HTTP tests (requires MySQL)
-│   │   └── middleware.go         # Logging, role extraction, content-type
-│   ├── domain/
-│   │   ├── errors.go             # Sentinel errors
-│   │   ├── state.go              # State type, transitions, validation
-│   │   └── workitem.go           # WorkItem struct, validation, constants
-│   ├── graph/
-│   │   └── cycle.go              # DFS cycle detection with recursive CTE
-│   └── store/
-│       ├── store.go              # Store interfaces (WorkItemStore, etc.)
-│       └── mysql/
-│           ├── migration.go      # SQL migration runner with advisory locking
-│           ├── workitem.go       # WorkItem CRUD, batch loading, hierarchy
-│           └── relationship.go   # Relationship Add/Remove/ListByTarget
-├── migrations/
-│   ├── 001_create_work_items.{up,down}.sql
-│   ├── 002_create_work_item_tags.{up,down}.sql
-│   └── 003_create_work_item_relationships.{up,down}.sql
-└── specs/initial/
-    ├── SPEC.md                   # Full system specification
-    └── PLAN.md                   # Phased implementation plan
+│   ├── api/                      # HTTP handlers, middleware, error mapping
+│   ├── domain/                   # State machine, validation, types
+│   ├── graph/                    # DFS cycle detection with recursive CTE
+│   └── store/mysql/              # MySQL CRUD, batch loading, migrations
+├── frontend/
+│   ├── src/
+│   │   ├── app/                  # Providers, router, AppShell layout
+│   │   ├── components/           # Reusable UI components
+│   │   │   ├── common/           # Toast, Modal, LoadingState, ErrorState, EmptyState
+│   │   │   ├── workitems/        # WorkItemCard, BoardColumn, StateSelector
+│   │   │   ├── forms/            # CreateWorkItemForm, TagEditor, RelationshipEditor
+│   │   │   ├── filters/          # FilterPanel, SearchInput
+│   │   │   └── graph/            # GraphNode, GraphDetailPanel
+│   │   ├── hooks/                # useWorkItems, useFilters, useRelationships, useCycles
+│   │   ├── lib/                  # API client, types, validation (Zod), constants
+│   │   └── pages/                # Home, Board, List, Graph, ItemDetail, Settings
+│   ├── vite.config.ts
+│   └── vitest.config.ts
+├── migrations/                   # SQL migration files (up/down)
+└── specs/                        # SPEC.md and PLAN.md
 ```
 
 ## Getting Started
@@ -56,6 +50,7 @@ lattice/
 ### Prerequisites
 
 - Go 1.23 or later
+- Node.js 20+ and npm
 - MySQL 8.0 or later
 
 ### Database Setup
@@ -70,42 +65,71 @@ GRANT ALL PRIVILEGES ON lattice.* TO 'lattice'@'localhost';
 
 Migrations run automatically on server startup.
 
+### Install Dependencies
+
+```bash
+make install    # runs go mod download + npm install
+```
+
 ### Build and Run
 
 ```bash
-# Build
-go build -o lattice ./cmd/lattice
+# Build everything (Go binary + frontend)
+make build
 
-# Run (migrations apply automatically)
-LATTICE_DSN="lattice:your-password@tcp(127.0.0.1:3306)/lattice?parseTime=true&multiStatements=true" \
-  ./lattice
+# Or use the Makefile targets for development:
+make run-api    # Start API server with hot reload (air)
+make run-ui     # Start Vite dev server on http://localhost:5175
 ```
 
-The server starts on `:8080` by default.
+The API server listens on `:8090` by default. The Vite dev server proxies `/workitems` requests to the API.
 
 ### Environment Variables
 
+Create a `.env` file in the project root (loaded automatically by the Makefile):
+
+```
+LATTICE_DB_HOST=127.0.0.1
+LATTICE_DB_PORT=3306
+LATTICE_DB_USER=lattice
+LATTICE_DB_PASSWORD=your-password
+LATTICE_DB_NAME=lattice
+LATTICE_ADDR=:8090
+```
+
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `LATTICE_DSN` | Yes | — | MySQL DSN (must include `parseTime=true&multiStatements=true`) |
-| `LATTICE_ADDR` | No | `:8080` | Listen address |
+| `LATTICE_DB_HOST` | Yes | — | MySQL host |
+| `LATTICE_DB_PORT` | No | `3306` | MySQL port |
+| `LATTICE_DB_USER` | Yes | — | MySQL user |
+| `LATTICE_DB_PASSWORD` | No | — | MySQL password |
+| `LATTICE_DB_NAME` | Yes | — | MySQL database name |
+| `LATTICE_ADDR` | No | `:8080` | API listen address |
 | `LATTICE_MIGRATIONS_DIR` | No | `migrations` | Path to SQL migration files |
+
+### Database Migrations
+
+```bash
+make migrate          # Run all pending migrations
+make migrate-down     # Roll back one migration
+make migrate-status   # Show current version
+```
+
+Migrations also run automatically on API server startup.
 
 ### Running Tests
 
 ```bash
-# Unit tests (no database required)
-go test ./...
+make test             # Run all tests (Go + frontend)
+make test-go          # Go tests only
+make test-frontend    # Frontend tests only (vitest)
+make lint             # Lint everything (golangci-lint + eslint)
+```
 
-# Integration tests (requires MySQL)
-LATTICE_TEST_DSN="lattice:your-password@tcp(127.0.0.1:3306)/lattice_test?parseTime=true&multiStatements=true" \
-  go test ./... -count=1
+### All Makefile Targets
 
-# Single test
-go test -run TestName ./path/to/package
-
-# Lint
-golangci-lint run ./...
+```bash
+make help             # Show all available targets
 ```
 
 ## API Reference
@@ -126,7 +150,7 @@ All request/response bodies use `application/json`. Errors follow a consistent f
 | HTTP Status | Code | Cause |
 |-------------|------|-------|
 | 400 | `INVALID_INPUT` | Malformed request, field constraint violation |
-| 403 | `FORBIDDEN` | Override requested without admin role |
+| 403 | `FORBIDDEN` | Action not permitted |
 | 404 | `NOT_FOUND` | Work item or relationship not found |
 | 409 | `INVALID_TRANSITION` | State transition not allowed |
 | 422 | `VALIDATION_ERROR` | Referential integrity, cycle, or depth violation |
@@ -138,7 +162,7 @@ All request/response bodies use `application/json`. Errors follow a consistent f
 Create a new work item. State is always set to `NotDone`. The `id`, `created_at`, and `updated_at` fields are system-generated.
 
 ```bash
-curl -X POST http://localhost:8080/workitems \
+curl -X POST http://localhost:8090/workitems \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Implement auth",
@@ -154,7 +178,7 @@ curl -X POST http://localhost:8080/workitems \
 #### GET /workitems/{id}
 
 ```bash
-curl http://localhost:8080/workitems/550e8400-e29b-41d4-a716-446655440000
+curl http://localhost:8090/workitems/550e8400-e29b-41d4-a716-446655440000
 ```
 
 **Response (200):** Full WorkItem object including tags and relationships.
@@ -164,17 +188,16 @@ curl http://localhost:8080/workitems/550e8400-e29b-41d4-a716-446655440000
 Partial update. Only provided fields are modified. Tags are replaced entirely if present. To unset `parent_id`, send `"parent_id": ""`.
 
 ```bash
-curl -X PATCH http://localhost:8080/workitems/550e8400-... \
+curl -X PATCH http://localhost:8090/workitems/550e8400-... \
   -H "Content-Type: application/json" \
   -d '{"state": "InProgress"}'
 ```
 
-For backward state transitions, include `override: true` and set the `X-Role: admin` header:
+For backward or skip transitions, include `override: true`:
 
 ```bash
-curl -X PATCH http://localhost:8080/workitems/550e8400-... \
+curl -X PATCH http://localhost:8090/workitems/550e8400-... \
   -H "Content-Type: application/json" \
-  -H "X-Role: admin" \
   -d '{"state": "NotDone", "override": true}'
 ```
 
@@ -198,7 +221,7 @@ List work items with filtering and pagination.
 | `page_size` | int | Default: 50, max: 200 |
 
 ```bash
-curl "http://localhost:8080/workitems?state=NotDone&tags=backend,urgent&page=1&page_size=20"
+curl "http://localhost:8090/workitems?state=NotDone&tags=backend,urgent&page=1&page_size=20"
 ```
 
 **Response (200):**
@@ -217,7 +240,7 @@ curl "http://localhost:8080/workitems?state=NotDone&tags=backend,urgent&page=1&p
 Deletes a work item atomically. Cascades: removes all relationships (both directions), nulls `parent_id` on children, removes tags.
 
 ```bash
-curl -X DELETE http://localhost:8080/workitems/550e8400-...
+curl -X DELETE http://localhost:8090/workitems/550e8400-...
 ```
 
 **Response:** 204 No Content.
@@ -225,7 +248,7 @@ curl -X DELETE http://localhost:8080/workitems/550e8400-...
 #### POST /workitems/{id}/relationships
 
 ```bash
-curl -X POST http://localhost:8080/workitems/550e8400-.../relationships \
+curl -X POST http://localhost:8090/workitems/550e8400-.../relationships \
   -H "Content-Type: application/json" \
   -d '{"type": "depends_on", "target_id": "660e8400-..."}'
 ```
@@ -243,7 +266,7 @@ curl -X POST http://localhost:8080/workitems/550e8400-.../relationships \
 #### DELETE /workitems/{id}/relationships/{rel_id}
 
 ```bash
-curl -X DELETE http://localhost:8080/workitems/550e8400-.../relationships/770e8400-...
+curl -X DELETE http://localhost:8090/workitems/550e8400-.../relationships/770e8400-...
 ```
 
 **Response:** 204 No Content.
@@ -253,7 +276,7 @@ curl -X DELETE http://localhost:8080/workitems/550e8400-.../relationships/770e84
 Detects dependency cycles (`depends_on` and `blocks` edges) involving the specified work item.
 
 ```bash
-curl http://localhost:8080/workitems/550e8400-.../cycles
+curl http://localhost:8090/workitems/550e8400-.../cycles
 ```
 
 **Response (200):**
@@ -297,13 +320,12 @@ Returns an empty array if no cycles exist.
 
 ```
 NotDone ──> InProgress ──> Completed
-   ^                          │
-   └──── admin override ──────┘
+   ^             ^              │
+   └─────────────┴── override ──┘
 ```
 
-- Forward: always allowed (one step at a time)
-- Skip forward (NotDone -> Completed): not allowed
-- Backward: requires `override: true` in request body + `X-Role: admin` header
+- Forward (one step): always allowed
+- Backward or skip: requires `override: true` in the request body
 
 ### Database Schema
 
