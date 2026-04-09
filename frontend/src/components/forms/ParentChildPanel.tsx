@@ -11,7 +11,7 @@ export function ParentChildPanel({
   item,
   onChangeParent,
 }: ParentChildPanelProps) {
-  const { data: childrenData } = useWorkItems({
+  const { data: childrenData } = useWorkItems(item.project_id, {
     parent_id: item.id,
     page_size: 10,
   });

@@ -13,6 +13,7 @@ interface UseRelationshipsOptions {
 }
 
 export function useRelationships(
+  projectId: string,
   sourceId: string,
   options?: UseRelationshipsOptions,
 ) {
@@ -20,13 +21,13 @@ export function useRelationships(
   const { addToast } = useToast();
 
   const invalidateSource = () => {
-    queryClient.invalidateQueries({ queryKey: ["workitem", sourceId] });
-    queryClient.invalidateQueries({ queryKey: ["workitems"] });
+    queryClient.invalidateQueries({ queryKey: ["workitem", projectId, sourceId] });
+    queryClient.invalidateQueries({ queryKey: ["workitems", projectId] });
   };
 
   const addRelationshipMutation = useMutation({
     mutationFn: (input: AddRelationshipInput) =>
-      addRelationship(sourceId, input),
+      addRelationship(projectId, sourceId, input),
     onSuccess: async (_data, variables) => {
       invalidateSource();
       addToast("Relationship added", "success");
@@ -36,7 +37,7 @@ export function useRelationships(
         variables.type === "blocks"
       ) {
         try {
-          const result = await detectCycles(sourceId);
+          const result = await detectCycles(projectId, sourceId);
           if (result.has_cycle) {
             options?.onCycleDetected?.(result);
           }
@@ -50,7 +51,7 @@ export function useRelationships(
 
   const removeRelationshipMutation = useMutation({
     mutationFn: (relationshipId: string) =>
-      removeRelationship(sourceId, relationshipId),
+      removeRelationship(projectId, sourceId, relationshipId),
     onSuccess: () => {
       invalidateSource();
       addToast("Relationship removed", "success");

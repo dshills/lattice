@@ -26,35 +26,52 @@ function buildQueryString(filter: ListFilter): string {
   return qs ? `?${qs}` : "";
 }
 
-export function listWorkItems(filter: ListFilter = {}): Promise<ListResponse> {
-  return apiFetch<ListResponse>(`/workitems${buildQueryString(filter)}`);
+function base(projectId: string): string {
+  return `/projects/${projectId}/workitems`;
 }
 
-export function getWorkItem(id: string): Promise<WorkItem> {
-  return apiFetch<WorkItem>(`/workitems/${id}`);
+export function listWorkItems(
+  projectId: string,
+  filter: ListFilter = {},
+): Promise<ListResponse> {
+  return apiFetch<ListResponse>(
+    `${base(projectId)}${buildQueryString(filter)}`,
+  );
+}
+
+export function getWorkItem(
+  projectId: string,
+  id: string,
+): Promise<WorkItem> {
+  return apiFetch<WorkItem>(`${base(projectId)}/${id}`);
 }
 
 export function createWorkItem(
+  projectId: string,
   input: CreateWorkItemInput,
 ): Promise<WorkItem> {
-  return apiFetch<WorkItem>("/workitems", {
+  return apiFetch<WorkItem>(base(projectId), {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
 export function updateWorkItem(
+  projectId: string,
   id: string,
   input: UpdateWorkItemInput,
 ): Promise<WorkItem> {
-  return apiFetch<WorkItem>(`/workitems/${id}`, {
+  return apiFetch<WorkItem>(`${base(projectId)}/${id}`, {
     method: "PATCH",
     body: JSON.stringify(input),
   });
 }
 
-export function deleteWorkItem(id: string): Promise<void> {
-  return apiFetch<void>(`/workitems/${id}`, {
+export function deleteWorkItem(
+  projectId: string,
+  id: string,
+): Promise<void> {
+  return apiFetch<void>(`${base(projectId)}/${id}`, {
     method: "DELETE",
   });
 }

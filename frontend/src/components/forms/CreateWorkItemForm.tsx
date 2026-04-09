@@ -6,6 +6,7 @@ import {
   type CreateWorkItemData,
 } from "../../lib/validation";
 import { useWorkItemMutations } from "../../hooks/useWorkItemMutations";
+import { DEFAULT_PROJECT_ID } from "../../lib/constants";
 import { Modal } from "../common/Modal";
 import { TagEditor } from "./TagEditor";
 
@@ -24,7 +25,7 @@ export function CreateWorkItemForm({
 }: CreateWorkItemFormProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
-  const { createMutation } = useWorkItemMutations();
+  const { createMutation } = useWorkItemMutations(DEFAULT_PROJECT_ID);
 
   const {
     register,

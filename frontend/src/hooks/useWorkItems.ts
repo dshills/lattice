@@ -2,17 +2,18 @@ import { useQuery } from "@tanstack/react-query";
 import { listWorkItems, getWorkItem } from "../lib/api/workitems";
 import type { ListFilter } from "../lib/types";
 
-export function useWorkItems(filter: ListFilter = {}) {
+export function useWorkItems(projectId: string, filter: ListFilter = {}) {
   return useQuery({
-    queryKey: ["workitems", filter],
-    queryFn: () => listWorkItems(filter),
+    queryKey: ["workitems", projectId, filter],
+    queryFn: () => listWorkItems(projectId, filter),
+    enabled: !!projectId,
   });
 }
 
-export function useWorkItem(id: string) {
+export function useWorkItem(projectId: string, id: string) {
   return useQuery({
-    queryKey: ["workitem", id],
-    queryFn: () => getWorkItem(id),
-    enabled: !!id,
+    queryKey: ["workitem", projectId, id],
+    queryFn: () => getWorkItem(projectId, id),
+    enabled: !!projectId && !!id,
   });
 }

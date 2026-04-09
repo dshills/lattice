@@ -12,17 +12,18 @@ import { ParentChildPanel } from "../components/forms/ParentChildPanel";
 import { RelationshipSummary } from "../components/workitems/RelationshipSummary";
 import { RelationshipEditor } from "../components/forms/RelationshipEditor";
 import { ConfirmDialog } from "../components/common/ConfirmDialog";
+import { DEFAULT_PROJECT_ID } from "../lib/constants";
 import type { RelationshipType, WorkItemState } from "../lib/types";
 
 export function ItemDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: item, isLoading, error, refetch } = useWorkItem(id!);
-  const { updateMutation, deleteMutation } = useWorkItemMutations();
+  const { data: item, isLoading, error, refetch } = useWorkItem(DEFAULT_PROJECT_ID, id!);
+  const { updateMutation, deleteMutation } = useWorkItemMutations(DEFAULT_PROJECT_ID);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [cycleWarning, setCycleWarning] = useState<string | null>(null);
   const { addRelationshipMutation, removeRelationshipMutation } =
-    useRelationships(id!, {
+    useRelationships(DEFAULT_PROJECT_ID, id!, {
       onCycleDetected: (result) => {
         const msg = `Dependency cycle detected: ${result.cycle.map((c) => c.slice(0, 8)).join(" -> ")}`;
         setCycleWarning(msg);

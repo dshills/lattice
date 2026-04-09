@@ -28,3 +28,5 @@ export const RELATIONSHIP_LABELS: Record<RelationshipType, string> = {
 };
 
 export const STATES: WorkItemState[] = ["NotDone", "InProgress", "Completed"];
+
+export const DEFAULT_PROJECT_ID = "00000000-0000-0000-0000-000000000001";

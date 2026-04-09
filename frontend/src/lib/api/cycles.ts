@@ -5,6 +5,11 @@ export interface CycleResult {
   cycle: string[];
 }
 
-export function detectCycles(workItemId: string): Promise<CycleResult> {
-  return apiFetch<CycleResult>(`/workitems/${workItemId}/cycles`);
+export function detectCycles(
+  projectId: string,
+  workItemId: string,
+): Promise<CycleResult> {
+  return apiFetch<CycleResult>(
+    `/projects/${projectId}/workitems/${workItemId}/cycles`,
+  );
 }

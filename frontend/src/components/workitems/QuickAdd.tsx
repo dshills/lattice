@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useWorkItemMutations } from "../../hooks/useWorkItemMutations";
+import { DEFAULT_PROJECT_ID } from "../../lib/constants";
 
 export function QuickAdd() {
   const [title, setTitle] = useState("");
-  const { createMutation } = useWorkItemMutations();
+  const { createMutation } = useWorkItemMutations(DEFAULT_PROJECT_ID);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

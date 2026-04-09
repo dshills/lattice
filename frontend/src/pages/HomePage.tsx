@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { useWorkItems } from "../hooks/useWorkItems";
 import { CompactCard } from "../components/workitems/CompactCard";
 import { CreateWorkItemForm } from "../components/forms/CreateWorkItemForm";
-import { STATE_LABELS } from "../lib/constants";
+import { DEFAULT_PROJECT_ID, STATE_LABELS } from "../lib/constants";
 import type { WorkItemState } from "../lib/types";
 
 function SummaryCard({
@@ -32,27 +32,27 @@ function SummaryCard({
 export function HomePage() {
   const [createOpen, setCreateOpen] = useState(false);
 
-  const { data: notDoneData } = useWorkItems({
+  const { data: notDoneData } = useWorkItems(DEFAULT_PROJECT_ID, {
     state: "NotDone",
     page_size: 1,
   });
-  const { data: inProgressData } = useWorkItems({
+  const { data: inProgressData } = useWorkItems(DEFAULT_PROJECT_ID, {
     state: "InProgress",
     page_size: 1,
   });
-  const { data: completedData } = useWorkItems({
+  const { data: completedData } = useWorkItems(DEFAULT_PROJECT_ID, {
     state: "Completed",
     page_size: 1,
   });
-  const { data: blockedData } = useWorkItems({
+  const { data: blockedData } = useWorkItems(DEFAULT_PROJECT_ID, {
     is_blocked: true,
     page_size: 5,
   });
-  const { data: inProgressItems } = useWorkItems({
+  const { data: inProgressItems } = useWorkItems(DEFAULT_PROJECT_ID, {
     state: "InProgress",
     page_size: 5,
   });
-  const { data: recentData } = useWorkItems({ page_size: 5 });
+  const { data: recentData } = useWorkItems(DEFAULT_PROJECT_ID, { page_size: 5 });
 
   return (
     <div className="space-y-6">

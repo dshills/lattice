@@ -1,3 +1,29 @@
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectWithCount extends Project {
+  item_count: number;
+}
+
+export interface ProjectListResponse {
+  projects: ProjectWithCount[];
+}
+
+export interface CreateProjectInput {
+  name: string;
+  description?: string;
+}
+
+export interface UpdateProjectInput {
+  name?: string;
+  description?: string;
+}
+
 export type WorkItemState = "NotDone" | "InProgress" | "Completed";
 
 export type RelationshipType =
@@ -14,6 +40,7 @@ export interface Relationship {
 
 export interface WorkItem {
   id: string;
+  project_id: string;
   title: string;
   description: string;
   state: WorkItemState;
