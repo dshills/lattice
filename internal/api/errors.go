@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/dshills/lattice/internal/domain"
@@ -41,6 +42,7 @@ func mapDomainError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrInvalidInput):
 		writeError(w, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 	default:
+		log.Printf("internal error: %v", err)
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 	}
 }
