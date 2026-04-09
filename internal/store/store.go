@@ -18,7 +18,6 @@ type UpdateParams struct {
 	Tags        []string // nil = don't change, non-nil = replace
 	ParentID    *string  // nil = don't change, &"" = unset
 	Override    bool
-	IsAdmin     bool
 }
 
 // WorkItemStore defines persistence operations for WorkItems.

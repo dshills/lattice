@@ -22,12 +22,6 @@ func RoleMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// isAdmin returns whether the current request has admin role.
-func isAdmin(ctx context.Context) bool {
-	v, _ := ctx.Value(roleKey).(bool)
-	return v
-}
-
 // LoggingMiddleware logs each request with method, path, status, and duration.
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -17,28 +17,14 @@ import { FilterPanel } from "../components/filters/FilterPanel";
 import { LoadingState } from "../components/common/LoadingState";
 import { ErrorState } from "../components/common/ErrorState";
 import { STATES } from "../lib/constants";
-import { isAdmin } from "../lib/config";
 import type { WorkItem, WorkItemState } from "../lib/types";
 
-const VALID_TRANSITIONS: Record<WorkItemState, WorkItemState[]> = {
-  NotDone: ["InProgress"],
-  InProgress: ["Completed"],
-  Completed: [],
-};
-
-const ADMIN_BACKWARD: Record<WorkItemState, WorkItemState[]> = {
-  NotDone: [],
-  InProgress: ["NotDone"],
-  Completed: ["InProgress"],
-};
+const ALL_STATES: WorkItemState[] = ["NotDone", "InProgress", "Completed"];
 
 function getAllowedTargets(
   fromState: WorkItemState,
-  admin: boolean,
 ): WorkItemState[] {
-  const forward = VALID_TRANSITIONS[fromState];
-  const backward = admin ? ADMIN_BACKWARD[fromState] : [];
-  return [...forward, ...backward];
+  return ALL_STATES.filter((s) => s !== fromState);
 }
 
 export function BoardPage() {
@@ -64,12 +50,10 @@ export function BoardPage() {
     };
   }, [data]);
 
-  const admin = isAdmin();
-
   const allowedTargets = useMemo(() => {
     if (!activeItem) return new Set<WorkItemState>();
-    return new Set(getAllowedTargets(activeItem.state, admin));
-  }, [activeItem, admin]);
+    return new Set(getAllowedTargets(activeItem.state));
+  }, [activeItem]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const item = event.active.data.current?.item as WorkItem | undefined;
@@ -88,21 +72,19 @@ export function BoardPage() {
       const targetState = over.id as WorkItemState;
       if (targetState === item.state) return;
 
-      const allowed = getAllowedTargets(item.state, admin);
-      if (!allowed.includes(targetState)) return;
-
-      const isBackward =
-        ADMIN_BACKWARD[item.state]?.includes(targetState) ?? false;
+      const isForwardTransition =
+        (item.state === "NotDone" && targetState === "InProgress") ||
+        (item.state === "InProgress" && targetState === "Completed");
 
       updateMutation.mutate({
         id: item.id,
         input: {
           state: targetState,
-          ...(isBackward ? { override: true } : {}),
+          override: !isForwardTransition,
         },
       });
     },
-    [admin, updateMutation],
+    [updateMutation],
   );
 
   if (isLoading) {

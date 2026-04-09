@@ -11,12 +11,13 @@ import {
   MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import dagre from "dagre";
-import { useWorkItem } from "../hooks/useWorkItems";
+import dagre from "@dagrejs/dagre";
+import { useWorkItems, useWorkItem } from "../hooks/useWorkItems";
 import { useCycles } from "../hooks/useCycles";
 import { getWorkItem } from "../lib/api/workitems";
 import { GraphNode } from "../components/graph/GraphNode";
 import { GraphDetailPanel } from "../components/graph/GraphDetailPanel";
+import { LoadingState } from "../components/common/LoadingState";
 import type { WorkItem, RelationshipType } from "../lib/types";
 
 const nodeTypes = { workItem: GraphNode };
@@ -176,25 +177,31 @@ export function GraphPage() {
     [setSearchParams],
   );
 
+  // Auto-focus: pick the first available item when no focus param is set
+  const { data: allItems, isLoading: loadingAll } = useWorkItems({
+    page_size: 1,
+  });
+
+  useEffect(() => {
+    if (!focusId && allItems?.items?.length) {
+      setSearchParams({ focus: allItems.items[0].id }, { replace: true });
+    }
+  }, [focusId, allItems, setSearchParams]);
+
   if (!focusId) {
+    if (loadingAll) return <LoadingState />;
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20">
         <h1 className="text-xl font-semibold text-gray-700">
           Dependency Graph
         </h1>
-        <p className="text-gray-500">
-          Select an item to explore its dependencies
-        </p>
-        <p className="text-sm text-gray-400">
-          Use <code className="bg-gray-100 px-1 rounded">?focus=ITEM_ID</code>{" "}
-          or click "Graph" from an item detail page
-        </p>
+        <p className="text-gray-500">No work items to display</p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full -m-6">
+    <div className="flex -m-6 flex-1" style={{ height: "calc(100vh - var(--header-height, 3.5rem))" }}>
       {cycleData?.has_cycle && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 rounded-md bg-amber-50 border border-amber-200 px-4 py-2 text-sm text-amber-800">
           Dependency cycle detected

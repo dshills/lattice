@@ -114,7 +114,6 @@ func (h *Handler) UpdateWorkItem(w http.ResponseWriter, r *http.Request) {
 		Tags:        req.Tags,
 		ParentID:    req.ParentID,
 		Override:    req.Override,
-		IsAdmin:     isAdmin(r.Context()),
 	}
 	if req.State != nil {
 		s := domain.State(*req.State)

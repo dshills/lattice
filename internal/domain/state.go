@@ -28,15 +28,11 @@ var forwardTransitions = map[State]State{
 	InProgress: Completed,
 }
 
-// stateOrder maps states to their ordinal position for backward detection.
-var stateOrder = map[State]int{NotDone: 0, InProgress: 1, Completed: 2}
-
 // ValidateTransition checks whether a state transition is allowed.
-// Only single-step forward transitions are permitted (NotDone→InProgress, InProgress→Completed).
-// Skipping states (e.g., NotDone→Completed) is not allowed.
-// Backward transitions require override=true and isAdmin=true.
-// The override field is ignored for forward transitions.
-func ValidateTransition(current, next State, override bool, isAdmin bool) error {
+// Any transition between valid states is permitted when override=true.
+// Without override, only single-step forward transitions are allowed
+// (NotDone→InProgress, InProgress→Completed).
+func ValidateTransition(current, next State, override bool) error {
 	if !ValidState(current) {
 		return fmt.Errorf("%w: invalid current state %q", ErrInvalidInput, current)
 	}
@@ -52,18 +48,10 @@ func ValidateTransition(current, next State, override bool, isAdmin bool) error 
 		return nil
 	}
 
-	// This is a backward or skipped transition.
+	// Any other transition requires override.
 	if !override {
 		return fmt.Errorf("%w: transition from %s to %s is not allowed", ErrInvalidTransition, current, next)
 	}
-	if !isAdmin {
-		return fmt.Errorf("%w: override requires admin role", ErrForbidden)
-	}
 
-	// Backward transition with admin override.
-	if stateOrder[current] > stateOrder[next] {
-		return nil
-	}
-
-	return fmt.Errorf("%w: transition from %s to %s is not allowed", ErrInvalidTransition, current, next)
+	return nil
 }

@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,13 +20,22 @@ import (
 )
 
 func main() {
-	dsn := os.Getenv("LATTICE_DSN")
-	if dsn == "" {
-		log.Fatal("LATTICE_DSN environment variable is required")
+	dbHost := os.Getenv("LATTICE_DB_HOST")
+	dbPort := os.Getenv("LATTICE_DB_PORT")
+	dbUser := os.Getenv("LATTICE_DB_USER")
+	dbPass := os.Getenv("LATTICE_DB_PASSWORD")
+	dbName := os.Getenv("LATTICE_DB_NAME")
+	if dbHost == "" || dbUser == "" || dbName == "" {
+		log.Fatal("LATTICE_DB_HOST, LATTICE_DB_USER, and LATTICE_DB_NAME environment variables are required")
 	}
+	if dbPort == "" {
+		dbPort = "3306"
+	}
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&multiStatements=true",
+		url.QueryEscape(dbUser), url.QueryEscape(dbPass), dbHost, dbPort, dbName)
 	addr := os.Getenv("LATTICE_ADDR")
 	if addr == "" {
-		addr = ":8080"
+		addr = ":8090"
 	}
 	migrationsDir := os.Getenv("LATTICE_MIGRATIONS_DIR")
 	if migrationsDir == "" {

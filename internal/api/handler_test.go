@@ -50,7 +50,7 @@ func (m *mockWorkItemStore) Update(_ context.Context, id string, params store.Up
 		return nil, domain.ErrNotFound
 	}
 	if params.State != nil {
-		if err := domain.ValidateTransition(existing.State, *params.State, params.Override, params.IsAdmin); err != nil {
+		if err := domain.ValidateTransition(existing.State, *params.State, params.Override); err != nil {
 			return nil, err
 		}
 		existing.State = *params.State
@@ -307,15 +307,22 @@ func TestUpdateWorkItemBackwardWithAdminOverride(t *testing.T) {
 	mux.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
-	// Backward transition without admin should fail.
+	// Backward transition with override should succeed for any user.
 	body := `{"state":"NotDone","override":true}`
 	req = httptest.NewRequest(http.MethodPatch, "/workitems/test-id-1", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
 
-	// With admin role should succeed.
+	// Advance again so we can test admin path too.
+	req = httptest.NewRequest(http.MethodPatch, "/workitems/test-id-1", bytes.NewBufferString(`{"state":"InProgress"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// With admin role should also succeed.
 	req = httptest.NewRequest(http.MethodPatch, "/workitems/test-id-1", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Role", "admin")

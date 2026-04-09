@@ -131,7 +131,7 @@ func (s *WorkItemStore) Update(ctx context.Context, id string, params store.Upda
 
 	// Validate state transition under the lock (prevents TOCTOU race).
 	if params.State != nil {
-		if err := domain.ValidateTransition(existing.State, *params.State, params.Override, params.IsAdmin); err != nil {
+		if err := domain.ValidateTransition(existing.State, *params.State, params.Override); err != nil {
 			return nil, err
 		}
 		existing.State = *params.State
@@ -277,7 +277,7 @@ func (s *WorkItemStore) List(ctx context.Context, filter store.ListFilter) (*sto
 
 	// Fetch page of IDs.
 	offset := (page - 1) * pageSize
-	idQuery := "SELECT DISTINCT w.id FROM work_items w" + buildJoins(filter) + where +
+	idQuery := "SELECT DISTINCT w.id, w.created_at FROM work_items w" + buildJoins(filter) + where +
 		" ORDER BY w.created_at DESC LIMIT ? OFFSET ?"
 	idArgs := append(args, pageSize, offset)
 
@@ -290,7 +290,8 @@ func (s *WorkItemStore) List(ctx context.Context, filter store.ListFilter) (*sto
 	var ids []string
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err != nil {
+		var createdAt time.Time
+		if err := rows.Scan(&id, &createdAt); err != nil {
 			return nil, fmt.Errorf("scan work_item id: %w", err)
 		}
 		ids = append(ids, id)
