@@ -10,9 +10,10 @@ import (
 
 func validWorkItem() *WorkItem {
 	return &WorkItem{
-		ID:    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-		Title: "Test Item",
-		State: NotDone,
+		ID:        "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+		ProjectID: DefaultProjectID,
+		Title:     "Test Item",
+		State:     NotDone,
 	}
 }
 

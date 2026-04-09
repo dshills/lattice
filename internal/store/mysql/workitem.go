@@ -66,9 +66,9 @@ func (s *WorkItemStore) Create(ctx context.Context, item *domain.WorkItem) error
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO work_items (id, title, description, state, type, parent_id, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		item.ID, item.Title, item.Description, string(item.State),
+		`INSERT INTO work_items (id, project_id, title, description, state, type, parent_id, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		item.ID, item.ProjectID, item.Title, item.Description, string(item.State),
 		nullableString(item.Type), nullableStringPtr(item.ParentID),
 		item.CreatedAt, item.UpdatedAt,
 	)
@@ -86,7 +86,7 @@ func (s *WorkItemStore) Create(ctx context.Context, item *domain.WorkItem) error
 // Get retrieves a WorkItem by ID, including its tags and relationships.
 func (s *WorkItemStore) Get(ctx context.Context, id string) (*domain.WorkItem, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, title, description, state, type, parent_id, created_at, updated_at
+		`SELECT id, project_id, title, description, state, type, parent_id, created_at, updated_at
 		 FROM work_items WHERE id = ?`, id)
 
 	item, err := scanWorkItem(row)
@@ -121,7 +121,7 @@ func (s *WorkItemStore) Update(ctx context.Context, id string, params store.Upda
 
 	// Fetch current state under lock.
 	row := tx.QueryRowContext(ctx,
-		`SELECT id, title, description, state, type, parent_id, created_at, updated_at
+		`SELECT id, project_id, title, description, state, type, parent_id, created_at, updated_at
 		 FROM work_items WHERE id = ? FOR UPDATE`, id)
 
 	existing, err := scanWorkItem(row)
@@ -395,7 +395,7 @@ func scanWorkItemFrom(s scanner) (*domain.WorkItem, error) {
 	var typ sql.NullString
 	var parentID sql.NullString
 
-	err := s.Scan(&item.ID, &item.Title, &item.Description, &state,
+	err := s.Scan(&item.ID, &item.ProjectID, &item.Title, &item.Description, &state,
 		&typ, &parentID, &item.CreatedAt, &item.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -430,7 +430,7 @@ func (s *WorkItemStore) batchLoadItems(ctx context.Context, ids []string) ([]dom
 	inClause := strings.Join(placeholders, ", ")
 
 	// 1. Load items.
-	itemQuery := `SELECT id, title, description, state, type, parent_id, created_at, updated_at
+	itemQuery := `SELECT id, project_id, title, description, state, type, parent_id, created_at, updated_at
 		FROM work_items WHERE id IN (` + inClause + `)`
 	rows, err := s.db.QueryContext(ctx, itemQuery, idArgs...)
 	if err != nil {

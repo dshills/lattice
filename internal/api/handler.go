@@ -58,6 +58,7 @@ func (h *Handler) CreateWorkItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	item := &domain.WorkItem{
+		ProjectID:   domain.DefaultProjectID,
 		Title:       req.Title,
 		Description: req.Description,
 		Type:        req.Type,

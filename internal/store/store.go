@@ -20,6 +20,28 @@ type UpdateParams struct {
 	Override    bool
 }
 
+// ProjectUpdateParams carries the fields to update on a Project.
+// Nil pointer fields mean "do not change".
+type ProjectUpdateParams struct {
+	Name        *string
+	Description *string
+}
+
+// ProjectWithCount is a Project with a computed work item count.
+type ProjectWithCount struct {
+	domain.Project
+	ItemCount int `json:"item_count"`
+}
+
+// ProjectStore defines persistence operations for Projects.
+type ProjectStore interface {
+	Create(ctx context.Context, project *domain.Project) error
+	Get(ctx context.Context, id string) (*domain.Project, error)
+	Update(ctx context.Context, id string, params ProjectUpdateParams) (*domain.Project, error)
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context) ([]ProjectWithCount, error)
+}
+
 // WorkItemStore defines persistence operations for WorkItems.
 type WorkItemStore interface {
 	Create(ctx context.Context, item *domain.WorkItem) error

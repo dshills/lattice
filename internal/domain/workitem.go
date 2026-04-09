@@ -48,6 +48,7 @@ type Relationship struct {
 // WorkItem is the fundamental unit of work in Lattice.
 type WorkItem struct {
 	ID            string         `json:"id"`
+	ProjectID     string         `json:"project_id"`
 	Title         string         `json:"title"`
 	Description   string         `json:"description"`
 	State         State          `json:"state"`
@@ -86,6 +87,9 @@ func (w *WorkItem) Validate() error {
 		if strings.Contains(tag, ",") {
 			return fmt.Errorf("%w: tag must not contain commas", ErrInvalidInput)
 		}
+	}
+	if w.ProjectID == "" {
+		return fmt.Errorf("%w: project_id is required", ErrInvalidInput)
 	}
 	if w.ParentID != nil && *w.ParentID == w.ID {
 		return fmt.Errorf("%w: parent_id must not reference own ID", ErrValidation)
