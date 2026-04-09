@@ -43,11 +43,12 @@ type ProjectStore interface {
 }
 
 // WorkItemStore defines persistence operations for WorkItems.
+// All operations are scoped to a project via the projectID parameter.
 type WorkItemStore interface {
 	Create(ctx context.Context, item *domain.WorkItem) error
-	Get(ctx context.Context, id string) (*domain.WorkItem, error)
-	Update(ctx context.Context, id string, params UpdateParams) (*domain.WorkItem, error)
-	Delete(ctx context.Context, id string) error
+	Get(ctx context.Context, projectID, id string) (*domain.WorkItem, error)
+	Update(ctx context.Context, projectID, id string, params UpdateParams) (*domain.WorkItem, error)
+	Delete(ctx context.Context, projectID, id string) error
 	List(ctx context.Context, filter ListFilter) (*ListResult, error)
 	AncestorDepth(ctx context.Context, parentID string) (int, error)
 	HasCycle(ctx context.Context, childID, parentID string) (bool, error)
@@ -69,6 +70,7 @@ type CycleDetector interface {
 
 // ListFilter contains query parameters for listing WorkItems.
 type ListFilter struct {
+	ProjectID          string
 	State              *domain.State
 	Tags               []string
 	Type               *string

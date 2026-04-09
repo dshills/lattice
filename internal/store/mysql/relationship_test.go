@@ -31,7 +31,7 @@ func TestRelationshipAdd(t *testing.T) {
 	assert.NotEmpty(t, rel.ID)
 
 	// Verify via Get.
-	got, err := ws.Get(ctx, source.ID)
+	got, err := ws.Get(ctx, testProjectID, source.ID)
 	require.NoError(t, err)
 	require.Len(t, got.Relationships, 1)
 	assert.Equal(t, domain.DependsOn, got.Relationships[0].Type)
@@ -115,7 +115,7 @@ func TestRelationshipRemove(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify removed.
-	got, err := ws.Get(ctx, source.ID)
+	got, err := ws.Get(ctx, testProjectID, source.ID)
 	require.NoError(t, err)
 	assert.Empty(t, got.Relationships)
 }

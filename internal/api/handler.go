@@ -39,6 +39,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 const maxBodySize = 1 << 20 // 1 MB
 
+// projectID extracts the project_id from the URL path. Falls back to the
+// default project ID when running under the old /workitems routes.
+func (h *Handler) projectID(r *http.Request) string {
+	if pid := r.PathValue("project_id"); pid != "" {
+		return pid
+	}
+	return domain.DefaultProjectID
+}
+
 // --- Create ---
 
 type createRequest struct {
@@ -58,7 +67,7 @@ func (h *Handler) CreateWorkItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	item := &domain.WorkItem{
-		ProjectID:   domain.DefaultProjectID,
+		ProjectID:   h.projectID(r),
 		Title:       req.Title,
 		Description: req.Description,
 		Type:        req.Type,
@@ -77,8 +86,9 @@ func (h *Handler) CreateWorkItem(w http.ResponseWriter, r *http.Request) {
 // --- Get ---
 
 func (h *Handler) GetWorkItem(w http.ResponseWriter, r *http.Request) {
+	projectID := h.projectID(r)
 	id := r.PathValue("id")
-	item, err := h.WorkItems.Get(r.Context(), id)
+	item, err := h.WorkItems.Get(r.Context(), projectID, id)
 	if err != nil {
 		mapDomainError(w, err)
 		return
@@ -121,7 +131,8 @@ func (h *Handler) UpdateWorkItem(w http.ResponseWriter, r *http.Request) {
 		params.State = &s
 	}
 
-	item, err := h.WorkItems.Update(r.Context(), id, params)
+	projectID := h.projectID(r)
+	item, err := h.WorkItems.Update(r.Context(), projectID, id, params)
 	if err != nil {
 		mapDomainError(w, err)
 		return
@@ -133,8 +144,9 @@ func (h *Handler) UpdateWorkItem(w http.ResponseWriter, r *http.Request) {
 // --- Delete ---
 
 func (h *Handler) DeleteWorkItem(w http.ResponseWriter, r *http.Request) {
+	projectID := h.projectID(r)
 	id := r.PathValue("id")
-	if err := h.WorkItems.Delete(r.Context(), id); err != nil {
+	if err := h.WorkItems.Delete(r.Context(), projectID, id); err != nil {
 		mapDomainError(w, err)
 		return
 	}
@@ -150,6 +162,7 @@ func (h *Handler) ListWorkItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	filter.ProjectID = h.projectID(r)
 	result, err := h.WorkItems.List(r.Context(), filter)
 	if err != nil {
 		mapDomainError(w, err)

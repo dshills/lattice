@@ -2,7 +2,7 @@
 CREATE TABLE projects (
     id CHAR(36) PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL,
     created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     UNIQUE KEY uq_projects_name (name)

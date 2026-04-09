@@ -36,7 +36,7 @@ func (m *mockWorkItemStore) Create(_ context.Context, item *domain.WorkItem) err
 	return nil
 }
 
-func (m *mockWorkItemStore) Get(_ context.Context, id string) (*domain.WorkItem, error) {
+func (m *mockWorkItemStore) Get(_ context.Context, _, id string) (*domain.WorkItem, error) {
 	item, ok := m.items[id]
 	if !ok {
 		return nil, domain.ErrNotFound
@@ -44,7 +44,7 @@ func (m *mockWorkItemStore) Get(_ context.Context, id string) (*domain.WorkItem,
 	return item, nil
 }
 
-func (m *mockWorkItemStore) Update(_ context.Context, id string, params store.UpdateParams) (*domain.WorkItem, error) {
+func (m *mockWorkItemStore) Update(_ context.Context, _, id string, params store.UpdateParams) (*domain.WorkItem, error) {
 	existing, ok := m.items[id]
 	if !ok {
 		return nil, domain.ErrNotFound
@@ -68,7 +68,7 @@ func (m *mockWorkItemStore) Update(_ context.Context, id string, params store.Up
 	return &result, nil
 }
 
-func (m *mockWorkItemStore) Delete(_ context.Context, id string) error {
+func (m *mockWorkItemStore) Delete(_ context.Context, _, id string) error {
 	if _, ok := m.items[id]; !ok {
 		return domain.ErrNotFound
 	}

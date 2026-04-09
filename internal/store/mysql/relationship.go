@@ -37,9 +37,29 @@ func (s *RelationshipStore) Add(ctx context.Context, ownerID string, rel *domain
 
 	rel.ID = uuid.New().String()
 
+	// Validate both source and target belong to the same project.
+	var sourceProject, targetProject sql.NullString
+	err := s.db.QueryRowContext(ctx, "SELECT project_id FROM work_items WHERE id = ?", ownerID).Scan(&sourceProject)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("%w: source work item %q", domain.ErrNotFound, ownerID)
+		}
+		return fmt.Errorf("check source project: %w", err)
+	}
+	err = s.db.QueryRowContext(ctx, "SELECT project_id FROM work_items WHERE id = ?", rel.TargetID).Scan(&targetProject)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("%w: target work item %q does not exist", domain.ErrValidation, rel.TargetID)
+		}
+		return fmt.Errorf("check target project: %w", err)
+	}
+	if sourceProject.String != targetProject.String {
+		return fmt.Errorf("%w: source and target work items must be in the same project", domain.ErrValidation)
+	}
+
 	// Rely on FK constraints for referential integrity. Map MySQL errors
 	// to domain errors for the caller.
-	_, err := s.db.ExecContext(ctx,
+	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO work_item_relationships (id, source_id, target_id, type)
 		 VALUES (?, ?, ?, ?)`,
 		rel.ID, ownerID, rel.TargetID, string(rel.Type),

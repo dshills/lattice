@@ -49,12 +49,12 @@ func (s *WorkItemStore) Create(ctx context.Context, item *domain.WorkItem) error
 
 	// Validate parent exists, check depth limit, and check for cycles.
 	if item.ParentID != nil {
-		exists, err := rowExists(ctx, tx, "SELECT 1 FROM work_items WHERE id = ?", *item.ParentID)
+		exists, err := rowExists(ctx, tx, "SELECT 1 FROM work_items WHERE id = ? AND project_id = ?", *item.ParentID, item.ProjectID)
 		if err != nil {
 			return fmt.Errorf("check parent: %w", err)
 		}
 		if !exists {
-			return fmt.Errorf("%w: parent_id %q does not exist", domain.ErrValidation, *item.ParentID)
+			return fmt.Errorf("%w: parent_id %q does not exist in this project", domain.ErrValidation, *item.ParentID)
 		}
 		depth, err := ancestorDepth(ctx, tx, *item.ParentID)
 		if err != nil {
@@ -83,11 +83,11 @@ func (s *WorkItemStore) Create(ctx context.Context, item *domain.WorkItem) error
 	return tx.Commit()
 }
 
-// Get retrieves a WorkItem by ID, including its tags and relationships.
-func (s *WorkItemStore) Get(ctx context.Context, id string) (*domain.WorkItem, error) {
+// Get retrieves a WorkItem by ID within a project, including its tags and relationships.
+func (s *WorkItemStore) Get(ctx context.Context, projectID, id string) (*domain.WorkItem, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT id, project_id, title, description, state, type, parent_id, created_at, updated_at
-		 FROM work_items WHERE id = ?`, id)
+		 FROM work_items WHERE id = ? AND project_id = ?`, id, projectID)
 
 	item, err := scanWorkItem(row)
 	if err != nil {
@@ -112,7 +112,7 @@ func (s *WorkItemStore) Get(ctx context.Context, id string) (*domain.WorkItem, e
 // Update applies a partial update to an existing WorkItem. Only non-nil fields
 // in params are changed. State transitions are validated under the row lock to
 // prevent TOCTOU races. Returns the updated WorkItem.
-func (s *WorkItemStore) Update(ctx context.Context, id string, params store.UpdateParams) (*domain.WorkItem, error) {
+func (s *WorkItemStore) Update(ctx context.Context, projectID, id string, params store.UpdateParams) (*domain.WorkItem, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -122,7 +122,7 @@ func (s *WorkItemStore) Update(ctx context.Context, id string, params store.Upda
 	// Fetch current state under lock.
 	row := tx.QueryRowContext(ctx,
 		`SELECT id, project_id, title, description, state, type, parent_id, created_at, updated_at
-		 FROM work_items WHERE id = ? FOR UPDATE`, id)
+		 FROM work_items WHERE id = ? AND project_id = ? FOR UPDATE`, id, projectID)
 
 	existing, err := scanWorkItem(row)
 	if err != nil {
@@ -160,14 +160,14 @@ func (s *WorkItemStore) Update(ctx context.Context, id string, params store.Upda
 		return nil, err
 	}
 
-	// Validate parent exists and check for cycles if parent changed.
+	// Validate parent exists and check for cycles if parent was set/changed.
 	if params.ParentID != nil && existing.ParentID != nil {
-		exists, err := rowExists(ctx, tx, "SELECT 1 FROM work_items WHERE id = ?", *existing.ParentID)
+		exists, err := rowExists(ctx, tx, "SELECT 1 FROM work_items WHERE id = ? AND project_id = ?", *existing.ParentID, existing.ProjectID)
 		if err != nil {
 			return nil, fmt.Errorf("check parent: %w", err)
 		}
 		if !exists {
-			return nil, fmt.Errorf("%w: parent_id %q does not exist", domain.ErrValidation, *existing.ParentID)
+			return nil, fmt.Errorf("%w: parent_id %q does not exist in this project", domain.ErrValidation, *existing.ParentID)
 		}
 		hasCycle, err := hasCycle(ctx, tx, existing.ID, *existing.ParentID)
 		if err != nil {
@@ -229,15 +229,15 @@ func (s *WorkItemStore) Update(ctx context.Context, id string, params store.Upda
 // Delete atomically removes a WorkItem and cascades: removes relationships
 // (both directions), nulls children's parent_id, removes tags, then deletes
 // the item itself.
-func (s *WorkItemStore) Delete(ctx context.Context, id string) error {
+func (s *WorkItemStore) Delete(ctx context.Context, projectID, id string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Verify item exists.
-	exists, err := rowExists(ctx, tx, "SELECT 1 FROM work_items WHERE id = ?", id)
+	// Verify item exists in this project.
+	exists, err := rowExists(ctx, tx, "SELECT 1 FROM work_items WHERE id = ? AND project_id = ?", id, projectID)
 	if err != nil {
 		return fmt.Errorf("check existence: %w", err)
 	}
@@ -611,6 +611,10 @@ func buildWhereClause(filter store.ListFilter) (string, []any) {
 	var conditions []string
 	var args []any
 
+	if filter.ProjectID != "" {
+		conditions = append(conditions, "w.project_id = ?")
+		args = append(args, filter.ProjectID)
+	}
 	if filter.State != nil {
 		conditions = append(conditions, "w.state = ?")
 		args = append(args, string(*filter.State))

@@ -44,10 +44,13 @@ func testDB(t *testing.T) *sql.DB {
 
 func newItem(title string) *domain.WorkItem {
 	return &domain.WorkItem{
+		ProjectID:   domain.DefaultProjectID,
 		Title:       title,
 		Description: "test description",
 	}
 }
+
+const testProjectID = domain.DefaultProjectID
 
 func TestCreate(t *testing.T) {
 	db := testDB(t)
@@ -90,7 +93,7 @@ func TestGet(t *testing.T) {
 	item.Tags = []string{"gamma"}
 	require.NoError(t, s.Create(ctx, item))
 
-	got, err := s.Get(ctx, item.ID)
+	got, err := s.Get(ctx, testProjectID, item.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, item.ID, got.ID)
@@ -104,7 +107,7 @@ func TestGetNotFound(t *testing.T) {
 	s := mysqlstore.NewWorkItemStore(db)
 	ctx := context.Background()
 
-	_, err := s.Get(ctx, "nonexistent")
+	_, err := s.Get(ctx, testProjectID, "nonexistent")
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
@@ -119,7 +122,7 @@ func TestUpdate(t *testing.T) {
 
 	title := "After Update"
 	state := domain.InProgress
-	got, err := s.Update(ctx, item.ID, store.UpdateParams{
+	got, err := s.Update(ctx, testProjectID, item.ID, store.UpdateParams{
 		Title: &title,
 		State: &state,
 		Tags:  []string{"new1", "new2"},
@@ -138,7 +141,7 @@ func TestUpdateNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	title := "x"
-	_, err := s.Update(ctx, "nonexistent", store.UpdateParams{Title: &title})
+	_, err := s.Update(ctx, testProjectID, "nonexistent", store.UpdateParams{Title: &title})
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
@@ -151,10 +154,10 @@ func TestDelete(t *testing.T) {
 	item.Tags = []string{"doomed"}
 	require.NoError(t, s.Create(ctx, item))
 
-	err := s.Delete(ctx, item.ID)
+	err := s.Delete(ctx, testProjectID, item.ID)
 	require.NoError(t, err)
 
-	_, err = s.Get(ctx, item.ID)
+	_, err = s.Get(ctx, testProjectID, item.ID)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
@@ -163,7 +166,7 @@ func TestDeleteNotFound(t *testing.T) {
 	s := mysqlstore.NewWorkItemStore(db)
 	ctx := context.Background()
 
-	err := s.Delete(ctx, "nonexistent")
+	err := s.Delete(ctx, testProjectID, "nonexistent")
 	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
@@ -179,9 +182,9 @@ func TestDeleteNullsChildren(t *testing.T) {
 	child.ParentID = &parent.ID
 	require.NoError(t, s.Create(ctx, child))
 
-	require.NoError(t, s.Delete(ctx, parent.ID))
+	require.NoError(t, s.Delete(ctx, testProjectID, parent.ID))
 
-	got, err := s.Get(ctx, child.ID)
+	got, err := s.Get(ctx, testProjectID, child.ID)
 	require.NoError(t, err)
 	assert.Nil(t, got.ParentID)
 }
@@ -195,7 +198,7 @@ func TestListBasic(t *testing.T) {
 		require.NoError(t, s.Create(ctx, newItem("Item")))
 	}
 
-	result, err := s.List(ctx, store.ListFilter{Page: 1, PageSize: 10})
+	result, err := s.List(ctx, store.ListFilter{ProjectID: testProjectID, Page: 1, PageSize: 10})
 	require.NoError(t, err)
 	assert.Equal(t, 3, result.Total)
 	assert.Len(t, result.Items, 3)
@@ -210,13 +213,13 @@ func TestListFilterByState(t *testing.T) {
 	require.NoError(t, s.Create(ctx, item))
 
 	state := domain.InProgress
-	_, err := s.Update(ctx, item.ID, store.UpdateParams{State: &state})
+	_, err := s.Update(ctx, testProjectID, item.ID, store.UpdateParams{State: &state})
 	require.NoError(t, err)
 
 	require.NoError(t, s.Create(ctx, newItem("Still NotDone")))
 
 	filterState := domain.InProgress
-	result, err := s.List(ctx, store.ListFilter{State: &filterState, Page: 1, PageSize: 10})
+	result, err := s.List(ctx, store.ListFilter{ProjectID: testProjectID, State: &filterState, Page: 1, PageSize: 10})
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Total)
 	assert.Equal(t, domain.InProgress, result.Items[0].State)
@@ -236,7 +239,7 @@ func TestListFilterByType(t *testing.T) {
 	require.NoError(t, s.Create(ctx, item2))
 
 	typ := "bug"
-	result, err := s.List(ctx, store.ListFilter{Type: &typ, Page: 1, PageSize: 10})
+	result, err := s.List(ctx, store.ListFilter{ProjectID: testProjectID, Type: &typ, Page: 1, PageSize: 10})
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Total)
 }
@@ -255,7 +258,7 @@ func TestListFilterByTags(t *testing.T) {
 	require.NoError(t, s.Create(ctx, item2))
 
 	// AND logic: both tags must match
-	result, err := s.List(ctx, store.ListFilter{Tags: []string{"urgent", "backend"}, Page: 1, PageSize: 10})
+	result, err := s.List(ctx, store.ListFilter{ProjectID: testProjectID, Tags: []string{"urgent", "backend"}, Page: 1, PageSize: 10})
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.Total)
 }
@@ -269,14 +272,14 @@ func TestListPagination(t *testing.T) {
 		require.NoError(t, s.Create(ctx, newItem("Page Item")))
 	}
 
-	result, err := s.List(ctx, store.ListFilter{Page: 1, PageSize: 2})
+	result, err := s.List(ctx, store.ListFilter{ProjectID: testProjectID, Page: 1, PageSize: 2})
 	require.NoError(t, err)
 	assert.Equal(t, 5, result.Total)
 	assert.Len(t, result.Items, 2)
 	assert.Equal(t, 1, result.Page)
 	assert.Equal(t, 2, result.PageSize)
 
-	result2, err := s.List(ctx, store.ListFilter{Page: 3, PageSize: 2})
+	result2, err := s.List(ctx, store.ListFilter{ProjectID: testProjectID, Page: 3, PageSize: 2})
 	require.NoError(t, err)
 	assert.Len(t, result2.Items, 1) // last page
 }
@@ -363,7 +366,7 @@ func TestListFilterByParent(t *testing.T) {
 
 	require.NoError(t, s.Create(ctx, newItem("Orphan")))
 
-	result, err := s.List(ctx, store.ListFilter{ParentID: &parent.ID, Page: 1, PageSize: 10})
+	result, err := s.List(ctx, store.ListFilter{ProjectID: testProjectID, ParentID: &parent.ID, Page: 1, PageSize: 10})
 	require.NoError(t, err)
 	assert.Equal(t, 2, result.Total)
 }
@@ -377,10 +380,10 @@ func TestUpdateClearsTags(t *testing.T) {
 	item.Tags = []string{"a", "b"}
 	require.NoError(t, s.Create(ctx, item))
 
-	_, err := s.Update(ctx, item.ID, store.UpdateParams{Tags: []string{}})
+	_, err := s.Update(ctx, testProjectID, item.ID, store.UpdateParams{Tags: []string{}})
 	require.NoError(t, err)
 
-	got, err := s.Get(ctx, item.ID)
+	got, err := s.Get(ctx, testProjectID, item.ID)
 	require.NoError(t, err)
 	assert.Empty(t, got.Tags)
 }
