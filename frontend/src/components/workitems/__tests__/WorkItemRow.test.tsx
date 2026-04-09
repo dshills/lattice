@@ -1,12 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Routes, Route } from "react-router";
 import { WorkItemRow } from "../WorkItemRow";
 import type { WorkItem } from "../../../lib/types";
 
 function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
   return {
     id: "test-id",
+    project_id: "test-project",
     title: "Test Item",
     description: "A description",
     state: "InProgress",
@@ -25,12 +26,16 @@ function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
 
 function renderRow(item: WorkItem) {
   return render(
-    <MemoryRouter>
-      <table>
-        <tbody>
-          <WorkItemRow item={item} />
-        </tbody>
-      </table>
+    <MemoryRouter initialEntries={["/projects/test-project/list"]}>
+      <Routes>
+        <Route path="/projects/:projectId/list" element={
+          <table>
+            <tbody>
+              <WorkItemRow item={item} />
+            </tbody>
+          </table>
+        } />
+      </Routes>
     </MemoryRouter>,
   );
 }
@@ -40,7 +45,10 @@ describe("WorkItemRow", () => {
     renderRow(makeItem());
     const link = screen.getByText("Test Item");
     expect(link).toBeInTheDocument();
-    expect(link.closest("a")).toHaveAttribute("href", "/items/test-id");
+    expect(link.closest("a")).toHaveAttribute(
+      "href",
+      "/projects/test-project/items/test-id",
+    );
   });
 
   it("renders state badge", () => {

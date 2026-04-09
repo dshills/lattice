@@ -1,12 +1,14 @@
 import { Link } from "react-router";
+import { useProjectId } from "../../hooks/useProjectId";
 import type { WorkItem } from "../../lib/types";
 import { StateBadge } from "./StateBadge";
 import { TypeBadge } from "./TypeBadge";
 
 export function CompactCard({ item }: { item: WorkItem }) {
+  const projectId = useProjectId();
   return (
     <Link
-      to={`/items/${item.id}`}
+      to={`/projects/${projectId}/items/${item.id}`}
       className="flex items-center gap-3 rounded-md border border-gray-100 px-3 py-2 transition-colors hover:bg-gray-50"
     >
       <div className="min-w-0 flex-1">

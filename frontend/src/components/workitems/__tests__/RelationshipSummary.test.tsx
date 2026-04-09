@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Routes, Route } from "react-router";
 import { RelationshipSummary } from "../RelationshipSummary";
 import type { Relationship } from "../../../lib/types";
 
@@ -10,44 +10,42 @@ const relationships: Relationship[] = [
   { id: "r3", type: "blocks", target_id: "target-3-uuid-long" },
 ];
 
+function renderWithRoute(ui: React.ReactElement) {
+  return render(
+    <MemoryRouter initialEntries={["/projects/test-project/items/test-id"]}>
+      <Routes>
+        <Route path="/projects/:projectId/items/:id" element={ui} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe("RelationshipSummary", () => {
   it("renders empty message when no relationships", () => {
-    render(
-      <MemoryRouter>
-        <RelationshipSummary relationships={[]} />
-      </MemoryRouter>,
-    );
+    renderWithRoute(<RelationshipSummary relationships={[]} />);
     expect(screen.getByText("No relationships")).toBeInTheDocument();
   });
 
   it("renders grouped relationships in full mode", () => {
-    render(
-      <MemoryRouter>
-        <RelationshipSummary relationships={relationships} />
-      </MemoryRouter>,
-    );
+    renderWithRoute(<RelationshipSummary relationships={relationships} />);
     expect(screen.getByText("depends on")).toBeInTheDocument();
     expect(screen.getByText("blocks")).toBeInTheDocument();
   });
 
   it("renders compact summary", () => {
-    render(
-      <MemoryRouter>
-        <RelationshipSummary relationships={relationships} compact />
-      </MemoryRouter>,
+    renderWithRoute(
+      <RelationshipSummary relationships={relationships} compact />,
     );
     expect(screen.getByText("2 depends on, 1 blocks")).toBeInTheDocument();
   });
 
   it("shows remove buttons when onRemove provided", () => {
     const onRemove = vi.fn();
-    render(
-      <MemoryRouter>
-        <RelationshipSummary
-          relationships={relationships}
-          onRemove={onRemove}
-        />
-      </MemoryRouter>,
+    renderWithRoute(
+      <RelationshipSummary
+        relationships={relationships}
+        onRemove={onRemove}
+      />,
     );
 
     const removeButtons = screen.getAllByText("Remove");

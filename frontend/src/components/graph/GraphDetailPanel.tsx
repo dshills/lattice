@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { useProjectId } from "../../hooks/useProjectId";
 import type { WorkItem } from "../../lib/types";
 import { StateBadge } from "../workitems/StateBadge";
 import { TypeBadge } from "../workitems/TypeBadge";
@@ -11,6 +12,7 @@ interface GraphDetailPanelProps {
 }
 
 export function GraphDetailPanel({ item, onFocus }: GraphDetailPanelProps) {
+  const projectId = useProjectId();
   return (
     <div className="w-72 border-l border-gray-200 bg-white p-4 overflow-y-auto">
       <h3 className="text-sm font-semibold text-gray-900">{item.title}</h3>
@@ -48,7 +50,7 @@ export function GraphDetailPanel({ item, onFocus }: GraphDetailPanelProps) {
 
       <div className="mt-4 flex flex-col gap-2">
         <Link
-          to={`/items/${item.id}`}
+          to={`/projects/${projectId}/items/${item.id}`}
           className="text-xs text-blue-600 hover:underline"
         >
           Open full detail

@@ -18,7 +18,7 @@ import { getWorkItem } from "../lib/api/workitems";
 import { GraphNode } from "../components/graph/GraphNode";
 import { GraphDetailPanel } from "../components/graph/GraphDetailPanel";
 import { LoadingState } from "../components/common/LoadingState";
-import { DEFAULT_PROJECT_ID } from "../lib/constants";
+import { useProjectId } from "../hooks/useProjectId";
 import type { WorkItem, RelationshipType } from "../lib/types";
 
 const nodeTypes = { workItem: GraphNode };
@@ -57,6 +57,7 @@ function layoutGraph(nodes: Node[], edges: Edge[]): Node[] {
 }
 
 export function GraphPage() {
+  const projectId = useProjectId();
   const [searchParams, setSearchParams] = useSearchParams();
   const focusId = searchParams.get("focus") ?? "";
   const [selectedItem, setSelectedItem] = useState<WorkItem | null>(null);
@@ -65,8 +66,8 @@ export function GraphPage() {
   );
   const fetchIdRef = useRef(0);
 
-  const { data: focusItem } = useWorkItem(DEFAULT_PROJECT_ID, focusId);
-  const { data: cycleData } = useCycles(DEFAULT_PROJECT_ID, focusId, !!focusId);
+  const { data: focusItem } = useWorkItem(projectId, focusId);
+  const { data: cycleData } = useCycles(projectId, focusId, !!focusId);
 
   const cycleEdges = useMemo(() => {
     if (!cycleData?.has_cycle || !cycleData.cycle) return new Set<string>();
@@ -84,7 +85,7 @@ export function GraphPage() {
     const ids = focusItem.relationships.map((r) => r.target_id);
     const unique = [...new Set(ids)];
 
-    Promise.allSettled(unique.map((id) => getWorkItem(DEFAULT_PROJECT_ID, id))).then((results) => {
+    Promise.allSettled(unique.map((id) => getWorkItem(projectId, id))).then((results) => {
       if (fetchId !== fetchIdRef.current) return;
       const map = new Map<string, WorkItem>();
       for (const result of results) {
@@ -179,7 +180,7 @@ export function GraphPage() {
   );
 
   // Auto-focus: pick the first available item when no focus param is set
-  const { data: allItems, isLoading: loadingAll } = useWorkItems(DEFAULT_PROJECT_ID, {
+  const { data: allItems, isLoading: loadingAll } = useWorkItems(projectId, {
     page_size: 1,
   });
 

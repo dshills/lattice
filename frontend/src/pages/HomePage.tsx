@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { useWorkItems } from "../hooks/useWorkItems";
+import { useProjectId } from "../hooks/useProjectId";
 import { CompactCard } from "../components/workitems/CompactCard";
 import { CreateWorkItemForm } from "../components/forms/CreateWorkItemForm";
-import { DEFAULT_PROJECT_ID, STATE_LABELS } from "../lib/constants";
+import { STATE_LABELS } from "../lib/constants";
 import type { WorkItemState } from "../lib/types";
 
 function SummaryCard({
@@ -30,29 +31,30 @@ function SummaryCard({
 }
 
 export function HomePage() {
+  const projectId = useProjectId();
   const [createOpen, setCreateOpen] = useState(false);
 
-  const { data: notDoneData } = useWorkItems(DEFAULT_PROJECT_ID, {
+  const { data: notDoneData } = useWorkItems(projectId, {
     state: "NotDone",
     page_size: 1,
   });
-  const { data: inProgressData } = useWorkItems(DEFAULT_PROJECT_ID, {
+  const { data: inProgressData } = useWorkItems(projectId, {
     state: "InProgress",
     page_size: 1,
   });
-  const { data: completedData } = useWorkItems(DEFAULT_PROJECT_ID, {
+  const { data: completedData } = useWorkItems(projectId, {
     state: "Completed",
     page_size: 1,
   });
-  const { data: blockedData } = useWorkItems(DEFAULT_PROJECT_ID, {
+  const { data: blockedData } = useWorkItems(projectId, {
     is_blocked: true,
     page_size: 5,
   });
-  const { data: inProgressItems } = useWorkItems(DEFAULT_PROJECT_ID, {
+  const { data: inProgressItems } = useWorkItems(projectId, {
     state: "InProgress",
     page_size: 5,
   });
-  const { data: recentData } = useWorkItems(DEFAULT_PROJECT_ID, { page_size: 5 });
+  const { data: recentData } = useWorkItems(projectId, { page_size: 5 });
 
   return (
     <div className="space-y-6">
@@ -72,19 +74,19 @@ export function HomePage() {
           Create Work Item
         </button>
         <Link
-          to="/board"
+          to={`/projects/${projectId}/board`}
           className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
         >
           View Board
         </Link>
         <Link
-          to="/list"
+          to={`/projects/${projectId}/list`}
           className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
         >
           View List
         </Link>
         <Link
-          to="/graph"
+          to={`/projects/${projectId}/graph`}
           className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
         >
           View Graph
@@ -96,17 +98,17 @@ export function HomePage() {
         <Section
           title="Blocked Items"
           items={blockedData?.items ?? []}
-          filterLink="/list?is_blocked=true"
+          filterLink={`/projects/${projectId}/list?is_blocked=true`}
         />
         <Section
           title="In Progress"
           items={inProgressItems?.items ?? []}
-          filterLink="/list?state=InProgress"
+          filterLink={`/projects/${projectId}/list?state=InProgress`}
         />
         <Section
           title="Recently Updated"
           items={recentData?.items ?? []}
-          filterLink="/list"
+          filterLink={`/projects/${projectId}/list`}
         />
       </div>
 

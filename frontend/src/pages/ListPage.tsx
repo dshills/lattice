@@ -1,7 +1,7 @@
 import { useMemo, useState, useCallback } from "react";
 import { useWorkItems } from "../hooks/useWorkItems";
 import { useFilters } from "../hooks/useFilters";
-import { DEFAULT_PROJECT_ID } from "../lib/constants";
+import { useProjectId } from "../hooks/useProjectId";
 import { FilterPanel } from "../components/filters/FilterPanel";
 import { SearchInput } from "../components/filters/SearchInput";
 import { WorkItemRow } from "../components/workitems/WorkItemRow";
@@ -37,13 +37,14 @@ function SortHeader({
 }
 
 export function ListPage() {
+  const projectId = useProjectId();
   const { filters, setFilter, clearFilters, activeFilterCount } = useFilters();
   const pageSize = filters.page_size ?? 50;
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<SortField>("updated_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  const { data, isLoading, error, refetch } = useWorkItems(DEFAULT_PROJECT_ID, {
+  const { data, isLoading, error, refetch } = useWorkItems(projectId, {
     ...filters,
     page_size: pageSize,
   });

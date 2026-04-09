@@ -11,12 +11,13 @@ import {
 import { useWorkItems } from "../hooks/useWorkItems";
 import { useWorkItemMutations } from "../hooks/useWorkItemMutations";
 import { useFilters } from "../hooks/useFilters";
+import { useProjectId } from "../hooks/useProjectId";
 import { BoardColumn } from "../components/workitems/BoardColumn";
 import { WorkItemCard } from "../components/workitems/WorkItemCard";
 import { FilterPanel } from "../components/filters/FilterPanel";
 import { LoadingState } from "../components/common/LoadingState";
 import { ErrorState } from "../components/common/ErrorState";
-import { DEFAULT_PROJECT_ID, STATES } from "../lib/constants";
+import { STATES } from "../lib/constants";
 import type { WorkItem, WorkItemState } from "../lib/types";
 
 const ALL_STATES: WorkItemState[] = ["NotDone", "InProgress", "Completed"];
@@ -28,12 +29,13 @@ function getAllowedTargets(
 }
 
 export function BoardPage() {
+  const projectId = useProjectId();
   const { filters, setFilter, clearFilters, activeFilterCount } = useFilters();
-  const { data, isLoading, error, refetch } = useWorkItems(DEFAULT_PROJECT_ID, {
+  const { data, isLoading, error, refetch } = useWorkItems(projectId, {
     ...filters,
     page_size: 200,
   });
-  const { updateMutation } = useWorkItemMutations(DEFAULT_PROJECT_ID);
+  const { updateMutation } = useWorkItemMutations(projectId);
   const [activeItem, setActiveItem] = useState<WorkItem | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 

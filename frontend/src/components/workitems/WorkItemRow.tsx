@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
+import { useProjectId } from "../../hooks/useProjectId";
 import type { WorkItem } from "../../lib/types";
 import { StateBadge } from "./StateBadge";
 import { TypeBadge } from "./TypeBadge";
@@ -34,6 +35,7 @@ function relationshipSummary(item: WorkItem): string {
 const MAX_TAGS = 3;
 
 export function WorkItemRow({ item }: { item: WorkItem }) {
+  const projectId = useProjectId();
   const [expanded, setExpanded] = useState(false);
 
   const visibleTags = item.tags.slice(0, MAX_TAGS);
@@ -47,7 +49,7 @@ export function WorkItemRow({ item }: { item: WorkItem }) {
       >
         <td className="px-3 py-2 text-sm">
           <Link
-            to={`/items/${item.id}`}
+            to={`/projects/${projectId}/items/${item.id}`}
             onClick={(e) => e.stopPropagation()}
             className="font-medium text-blue-600 hover:underline"
           >
@@ -94,7 +96,7 @@ export function WorkItemRow({ item }: { item: WorkItem }) {
                   <div key={rel.id} className="text-xs text-gray-500">
                     {RELATIONSHIP_LABELS[rel.type]}{" "}
                     <Link
-                      to={`/items/${rel.target_id}`}
+                      to={`/projects/${projectId}/items/${rel.target_id}`}
                       className="text-blue-600 hover:underline"
                     >
                       {rel.target_id.slice(0, 8)}...

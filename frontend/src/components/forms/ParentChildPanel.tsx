@@ -25,7 +25,7 @@ export function ParentChildPanel({
         {item.parent_id ? (
           <div className="flex items-center gap-2">
             <Link
-              to={`/items/${item.parent_id}`}
+              to={`/projects/${item.project_id}/items/${item.parent_id}`}
               className="text-sm text-blue-600 hover:underline"
             >
               {item.parent_id}
@@ -51,7 +51,7 @@ export function ParentChildPanel({
             {childrenData.items.map((child) => (
               <li key={child.id}>
                 <Link
-                  to={`/items/${child.id}`}
+                  to={`/projects/${item.project_id}/items/${child.id}`}
                   className="text-sm text-blue-600 hover:underline"
                 >
                   {child.title}

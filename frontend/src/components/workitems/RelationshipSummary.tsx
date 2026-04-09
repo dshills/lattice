@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { useProjectId } from "../../hooks/useProjectId";
 import type { Relationship } from "../../lib/types";
 import { RELATIONSHIP_LABELS } from "../../lib/constants";
 
@@ -13,6 +14,7 @@ export function RelationshipSummary({
   onRemove,
   compact,
 }: RelationshipListProps) {
+  const projectId = useProjectId();
   if (relationships.length === 0) {
     return <p className="text-sm text-gray-400">No relationships</p>;
   }
@@ -56,7 +58,7 @@ export function RelationshipSummary({
                 className="flex items-center justify-between text-sm"
               >
                 <Link
-                  to={`/items/${rel.target_id}`}
+                  to={`/projects/${projectId}/items/${rel.target_id}`}
                   className="text-blue-600 hover:underline"
                 >
                   {rel.target_id.slice(0, 8)}...
