@@ -36,13 +36,17 @@ func integrationServer(t *testing.T) *httptest.Server {
 
 	require.NoError(t, mysqlstore.MigrateUp(context.Background(), db, "../../migrations"))
 
-	// Clean tables.
+	// Clean tables (order matters for FK constraints).
 	for _, table := range []string{"work_item_relationships", "work_item_tags", "work_items"} {
 		_, err := db.Exec("DELETE FROM " + table)
 		require.NoError(t, err)
 	}
+	// Delete non-default projects; keep the default project for backward compat.
+	_, err = db.Exec("DELETE FROM projects WHERE id != ?", domain.DefaultProjectID)
+	require.NoError(t, err)
 
 	h := &api.Handler{
+		Projects:      mysqlstore.NewProjectStore(db),
 		WorkItems:     mysqlstore.NewWorkItemStore(db),
 		Relationships: mysqlstore.NewRelationshipStore(db),
 		Cycles:        graph.NewCycleDetector(db),
@@ -109,6 +113,8 @@ func decodeJSON[T any](t *testing.T, resp *http.Response) T {
 	return v
 }
 
+const integrationProjectPrefix = "/projects/" + domain.DefaultProjectID
+
 // --- Integration Tests ---
 
 func TestIntegration_FullLifecycle(t *testing.T) {
@@ -116,7 +122,7 @@ func TestIntegration_FullLifecycle(t *testing.T) {
 	defer srv.Close()
 
 	// Create.
-	resp := postJSON(t, srv.URL+"/workitems", map[string]any{
+	resp := postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{
 		"title": "Lifecycle Item", "description": "test", "tags": []string{"v1"},
 	})
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
@@ -126,7 +132,7 @@ func TestIntegration_FullLifecycle(t *testing.T) {
 	assert.NotEmpty(t, item.ID)
 
 	// Get.
-	resp = getJSON(t, srv.URL+"/workitems/"+item.ID)
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+item.ID)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	got := decodeJSON[domain.WorkItem](t, resp)
 	assert.Equal(t, item.ID, got.ID)
@@ -134,23 +140,23 @@ func TestIntegration_FullLifecycle(t *testing.T) {
 
 	// Update state to InProgress.
 	state := "InProgress"
-	resp = patchJSON(t, srv.URL+"/workitems/"+item.ID, map[string]any{"state": state})
+	resp = patchJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+item.ID, map[string]any{"state": state})
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	updated := decodeJSON[domain.WorkItem](t, resp)
 	assert.Equal(t, domain.InProgress, updated.State)
 
 	// List.
-	resp = getJSON(t, srv.URL+"/workitems?page=1&page_size=10")
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems?page=1&page_size=10")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	list := decodeJSON[store.ListResult](t, resp)
 	assert.Equal(t, 1, list.Total)
 
 	// Delete.
-	resp = deleteReq(t, srv.URL+"/workitems/"+item.ID)
+	resp = deleteReq(t, srv.URL+integrationProjectPrefix+"/workitems/"+item.ID)
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 
 	// Verify gone.
-	resp = getJSON(t, srv.URL+"/workitems/"+item.ID)
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+item.ID)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	_ = resp.Body.Close()
 }
@@ -160,31 +166,31 @@ func TestIntegration_StateTransitions(t *testing.T) {
 	defer srv.Close()
 
 	// Create.
-	resp := postJSON(t, srv.URL+"/workitems", map[string]any{"title": "State Test"})
+	resp := postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "State Test"})
 	item := decodeJSON[domain.WorkItem](t, resp)
 
 	// Skip forward (NotDone -> Completed) should fail.
-	resp = patchJSON(t, srv.URL+"/workitems/"+item.ID, map[string]any{"state": "Completed"})
+	resp = patchJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+item.ID, map[string]any{"state": "Completed"})
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 	_ = resp.Body.Close()
 
 	// Forward to InProgress.
-	resp = patchJSON(t, srv.URL+"/workitems/"+item.ID, map[string]any{"state": "InProgress"})
+	resp = patchJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+item.ID, map[string]any{"state": "InProgress"})
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	_ = resp.Body.Close()
 
 	// Backward without override should fail.
-	resp = patchJSON(t, srv.URL+"/workitems/"+item.ID, map[string]any{"state": "NotDone"})
+	resp = patchJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+item.ID, map[string]any{"state": "NotDone"})
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 	_ = resp.Body.Close()
 
 	// Backward with override but no admin should fail.
-	resp = patchJSON(t, srv.URL+"/workitems/"+item.ID, map[string]any{"state": "NotDone", "override": true})
+	resp = patchJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+item.ID, map[string]any{"state": "NotDone", "override": true})
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 	_ = resp.Body.Close()
 
 	// Backward with override + admin should succeed.
-	resp = patchJSON(t, srv.URL+"/workitems/"+item.ID,
+	resp = patchJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+item.ID,
 		map[string]any{"state": "NotDone", "override": true},
 		"X-Role", "admin")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -197,13 +203,13 @@ func TestIntegration_RelationshipCRUD(t *testing.T) {
 	defer srv.Close()
 
 	// Create two items.
-	resp := postJSON(t, srv.URL+"/workitems", map[string]any{"title": "Source"})
+	resp := postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "Source"})
 	source := decodeJSON[domain.WorkItem](t, resp)
-	resp = postJSON(t, srv.URL+"/workitems", map[string]any{"title": "Target"})
+	resp = postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "Target"})
 	target := decodeJSON[domain.WorkItem](t, resp)
 
 	// Add relationship.
-	resp = postJSON(t, srv.URL+"/workitems/"+source.ID+"/relationships", map[string]any{
+	resp = postJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+source.ID+"/relationships", map[string]any{
 		"type": "depends_on", "target_id": target.ID,
 	})
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
@@ -211,17 +217,17 @@ func TestIntegration_RelationshipCRUD(t *testing.T) {
 	assert.NotEmpty(t, rel.ID)
 
 	// Verify via Get.
-	resp = getJSON(t, srv.URL+"/workitems/"+source.ID)
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+source.ID)
 	got := decodeJSON[domain.WorkItem](t, resp)
 	require.Len(t, got.Relationships, 1)
 	assert.Equal(t, target.ID, got.Relationships[0].TargetID)
 
 	// Remove relationship.
-	resp = deleteReq(t, srv.URL+"/workitems/"+source.ID+"/relationships/"+rel.ID)
+	resp = deleteReq(t, srv.URL+integrationProjectPrefix+"/workitems/"+source.ID+"/relationships/"+rel.ID)
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 
 	// Verify removed.
-	resp = getJSON(t, srv.URL+"/workitems/"+source.ID)
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+source.ID)
 	got = decodeJSON[domain.WorkItem](t, resp)
 	assert.Empty(t, got.Relationships)
 }
@@ -231,26 +237,26 @@ func TestIntegration_CascadeDelete(t *testing.T) {
 	defer srv.Close()
 
 	// Create parent + child.
-	resp := postJSON(t, srv.URL+"/workitems", map[string]any{"title": "Parent"})
+	resp := postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "Parent"})
 	parent := decodeJSON[domain.WorkItem](t, resp)
-	resp = postJSON(t, srv.URL+"/workitems", map[string]any{"title": "Child", "parent_id": parent.ID})
+	resp = postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "Child", "parent_id": parent.ID})
 	child := decodeJSON[domain.WorkItem](t, resp)
 
 	// Add relationship from parent to another item.
-	resp = postJSON(t, srv.URL+"/workitems", map[string]any{"title": "Related"})
+	resp = postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "Related"})
 	related := decodeJSON[domain.WorkItem](t, resp)
-	resp = postJSON(t, srv.URL+"/workitems/"+parent.ID+"/relationships", map[string]any{
+	resp = postJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+parent.ID+"/relationships", map[string]any{
 		"type": "blocks", "target_id": related.ID,
 	})
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 	_ = resp.Body.Close()
 
 	// Delete parent.
-	resp = deleteReq(t, srv.URL+"/workitems/"+parent.ID)
+	resp = deleteReq(t, srv.URL+integrationProjectPrefix+"/workitems/"+parent.ID)
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 
 	// Child should have nil parent_id.
-	resp = getJSON(t, srv.URL+"/workitems/"+child.ID)
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+child.ID)
 	childGot := decodeJSON[domain.WorkItem](t, resp)
 	assert.Nil(t, childGot.ParentID)
 }
@@ -260,19 +266,19 @@ func TestIntegration_CycleDetection(t *testing.T) {
 	defer srv.Close()
 
 	// Create A -> B -> A cycle.
-	resp := postJSON(t, srv.URL+"/workitems", map[string]any{"title": "A"})
+	resp := postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "A"})
 	a := decodeJSON[domain.WorkItem](t, resp)
-	resp = postJSON(t, srv.URL+"/workitems", map[string]any{"title": "B"})
+	resp = postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "B"})
 	b := decodeJSON[domain.WorkItem](t, resp)
 
-	postJSON(t, srv.URL+"/workitems/"+a.ID+"/relationships", map[string]any{
+	postJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+a.ID+"/relationships", map[string]any{
 		"type": "depends_on", "target_id": b.ID,
 	})
-	postJSON(t, srv.URL+"/workitems/"+b.ID+"/relationships", map[string]any{
+	postJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+b.ID+"/relationships", map[string]any{
 		"type": "depends_on", "target_id": a.ID,
 	})
 
-	resp = getJSON(t, srv.URL+"/workitems/"+a.ID+"/cycles")
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+a.ID+"/cycles")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	var cycleResp struct {
@@ -288,22 +294,22 @@ func TestIntegration_ListFilters(t *testing.T) {
 	defer srv.Close()
 
 	// Create items with different types and tags.
-	postJSON(t, srv.URL+"/workitems", map[string]any{"title": "Bug1", "type": "bug", "tags": []string{"urgent"}})
-	postJSON(t, srv.URL+"/workitems", map[string]any{"title": "Feature1", "type": "feature", "tags": []string{"urgent", "backend"}})
-	postJSON(t, srv.URL+"/workitems", map[string]any{"title": "Bug2", "type": "bug"})
+	postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "Bug1", "type": "bug", "tags": []string{"urgent"}})
+	postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "Feature1", "type": "feature", "tags": []string{"urgent", "backend"}})
+	postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "Bug2", "type": "bug"})
 
 	// Filter by type.
-	resp := getJSON(t, srv.URL+"/workitems?type=bug")
+	resp := getJSON(t, srv.URL+integrationProjectPrefix+"/workitems?type=bug")
 	list := decodeJSON[store.ListResult](t, resp)
 	assert.Equal(t, 2, list.Total)
 
 	// Filter by tags (AND).
-	resp = getJSON(t, srv.URL+"/workitems?tags=urgent,backend")
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems?tags=urgent,backend")
 	list = decodeJSON[store.ListResult](t, resp)
 	assert.Equal(t, 1, list.Total)
 
 	// Filter by state.
-	resp = getJSON(t, srv.URL+"/workitems?state=NotDone")
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems?state=NotDone")
 	list = decodeJSON[store.ListResult](t, resp)
 	assert.Equal(t, 3, list.Total)
 }
@@ -313,17 +319,17 @@ func TestIntegration_Pagination(t *testing.T) {
 	defer srv.Close()
 
 	for i := range 5 {
-		postJSON(t, srv.URL+"/workitems", map[string]any{"title": fmt.Sprintf("Item %d", i)})
+		postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": fmt.Sprintf("Item %d", i)})
 	}
 
-	resp := getJSON(t, srv.URL+"/workitems?page=1&page_size=2")
+	resp := getJSON(t, srv.URL+integrationProjectPrefix+"/workitems?page=1&page_size=2")
 	list := decodeJSON[store.ListResult](t, resp)
 	assert.Equal(t, 5, list.Total)
 	assert.Len(t, list.Items, 2)
 	assert.Equal(t, 1, list.Page)
 	assert.Equal(t, 2, list.PageSize)
 
-	resp = getJSON(t, srv.URL+"/workitems?page=3&page_size=2")
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems?page=3&page_size=2")
 	list = decodeJSON[store.ListResult](t, resp)
 	assert.Len(t, list.Items, 1) // last page
 }
@@ -333,7 +339,7 @@ func TestIntegration_ErrorResponses(t *testing.T) {
 	defer srv.Close()
 
 	// 404.
-	resp := getJSON(t, srv.URL+"/workitems/nonexistent")
+	resp := getJSON(t, srv.URL+integrationProjectPrefix+"/workitems/nonexistent")
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	var errResp struct {
 		Error struct {
@@ -346,17 +352,17 @@ func TestIntegration_ErrorResponses(t *testing.T) {
 	assert.Equal(t, "NOT_FOUND", errResp.Error.Code)
 
 	// 400 — missing title.
-	resp = postJSON(t, srv.URL+"/workitems", map[string]any{"description": "no title"})
+	resp = postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"description": "no title"})
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	_ = resp.Body.Close()
 
 	// 400 — invalid page.
-	resp = getJSON(t, srv.URL+"/workitems?page=-1")
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems?page=-1")
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	_ = resp.Body.Close()
 
 	// 400 — invalid page_size.
-	resp = getJSON(t, srv.URL+"/workitems?page_size=999")
+	resp = getJSON(t, srv.URL+integrationProjectPrefix+"/workitems?page_size=999")
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	_ = resp.Body.Close()
 }
@@ -366,13 +372,13 @@ func TestIntegration_HierarchyParentCycle(t *testing.T) {
 	defer srv.Close()
 
 	// Create A -> B hierarchy.
-	resp := postJSON(t, srv.URL+"/workitems", map[string]any{"title": "A"})
+	resp := postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "A"})
 	a := decodeJSON[domain.WorkItem](t, resp)
-	resp = postJSON(t, srv.URL+"/workitems", map[string]any{"title": "B", "parent_id": a.ID})
+	resp = postJSON(t, srv.URL+integrationProjectPrefix+"/workitems", map[string]any{"title": "B", "parent_id": a.ID})
 	b := decodeJSON[domain.WorkItem](t, resp)
 
 	// Try to set A's parent to B (would create cycle).
-	resp = patchJSON(t, srv.URL+"/workitems/"+a.ID, map[string]any{"parent_id": b.ID})
+	resp = patchJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+a.ID, map[string]any{"parent_id": b.ID})
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	_ = resp.Body.Close()
 }

@@ -135,8 +135,31 @@ func (m *mockCycleDetector) DetectCycles(_ context.Context, _ string) ([][]strin
 	return nil, nil
 }
 
+type mockProjectStore struct{}
+
+func (m *mockProjectStore) Create(_ context.Context, p *domain.Project) error {
+	p.ID = "test-project-id"
+	return nil
+}
+func (m *mockProjectStore) Get(_ context.Context, id string) (*domain.Project, error) {
+	if id == "test-project-id" || id == domain.DefaultProjectID {
+		return &domain.Project{ID: id, Name: "Test"}, nil
+	}
+	return nil, domain.ErrNotFound
+}
+func (m *mockProjectStore) Update(_ context.Context, id string, _ store.ProjectUpdateParams) (*domain.Project, error) {
+	return &domain.Project{ID: id, Name: "Updated"}, nil
+}
+func (m *mockProjectStore) Delete(_ context.Context, _ string) error { return nil }
+func (m *mockProjectStore) List(_ context.Context) ([]store.ProjectWithCount, error) {
+	return []store.ProjectWithCount{}, nil
+}
+
+const testProjectPrefix = "/projects/" + domain.DefaultProjectID
+
 func newHandler() *api.Handler {
 	return &api.Handler{
+		Projects:      &mockProjectStore{},
 		WorkItems:     newMockWorkItemStore(),
 		Relationships: newMockRelationshipStore(),
 		Cycles:        &mockCycleDetector{},
@@ -156,7 +179,7 @@ func TestCreateWorkItem(t *testing.T) {
 	mux := setupServer(h)
 
 	body := `{"title":"Test Item","description":"A test","tags":["alpha"]}`
-	req := httptest.NewRequest(http.MethodPost, "/workitems", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -175,7 +198,7 @@ func TestCreateWorkItemInvalidJSON(t *testing.T) {
 	h := newHandler()
 	mux := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodPost, "/workitems", bytes.NewBufferString("{invalid"))
+	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString("{invalid"))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -188,7 +211,7 @@ func TestCreateWorkItemMissingTitle(t *testing.T) {
 	mux := setupServer(h)
 
 	body := `{"description":"no title"}`
-	req := httptest.NewRequest(http.MethodPost, "/workitems", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -202,14 +225,14 @@ func TestGetWorkItem(t *testing.T) {
 
 	// Create first.
 	body := `{"title":"Get Me"}`
-	req := httptest.NewRequest(http.MethodPost, "/workitems", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// Get.
-	req = httptest.NewRequest(http.MethodGet, "/workitems/test-id-1", nil)
+	req = httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/test-id-1", nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -223,7 +246,7 @@ func TestGetWorkItemNotFound(t *testing.T) {
 	h := newHandler()
 	mux := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/workitems/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/nonexistent", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -236,7 +259,7 @@ func TestUpdateWorkItem(t *testing.T) {
 
 	// Create.
 	createBody := `{"title":"Before"}`
-	req := httptest.NewRequest(http.MethodPost, "/workitems", bytes.NewBufferString(createBody))
+	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(createBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -244,7 +267,7 @@ func TestUpdateWorkItem(t *testing.T) {
 
 	// Update.
 	updateBody := `{"title":"After","state":"InProgress"}`
-	req = httptest.NewRequest(http.MethodPatch, "/workitems/test-id-1", bytes.NewBufferString(updateBody))
+	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(updateBody))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -261,7 +284,7 @@ func TestUpdateWorkItemNotFound(t *testing.T) {
 	mux := setupServer(h)
 
 	body := `{"title":"x"}`
-	req := httptest.NewRequest(http.MethodPatch, "/workitems/nonexistent", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/nonexistent", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -274,7 +297,7 @@ func TestUpdateWorkItemInvalidTransition(t *testing.T) {
 	mux := setupServer(h)
 
 	// Create (state=NotDone).
-	req := httptest.NewRequest(http.MethodPost, "/workitems", bytes.NewBufferString(`{"title":"t"}`))
+	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"t"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -282,7 +305,7 @@ func TestUpdateWorkItemInvalidTransition(t *testing.T) {
 
 	// Try to skip to Completed.
 	body := `{"state":"Completed"}`
-	req = httptest.NewRequest(http.MethodPatch, "/workitems/test-id-1", bytes.NewBufferString(body))
+	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -295,13 +318,13 @@ func TestUpdateWorkItemBackwardWithAdminOverride(t *testing.T) {
 	mux := setupServer(h)
 
 	// Create and advance to InProgress.
-	req := httptest.NewRequest(http.MethodPost, "/workitems", bytes.NewBufferString(`{"title":"t"}`))
+	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"t"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
-	req = httptest.NewRequest(http.MethodPatch, "/workitems/test-id-1", bytes.NewBufferString(`{"state":"InProgress"}`))
+	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(`{"state":"InProgress"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -309,21 +332,21 @@ func TestUpdateWorkItemBackwardWithAdminOverride(t *testing.T) {
 
 	// Backward transition with override should succeed for any user.
 	body := `{"state":"NotDone","override":true}`
-	req = httptest.NewRequest(http.MethodPatch, "/workitems/test-id-1", bytes.NewBufferString(body))
+	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Advance again so we can test admin path too.
-	req = httptest.NewRequest(http.MethodPatch, "/workitems/test-id-1", bytes.NewBufferString(`{"state":"InProgress"}`))
+	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(`{"state":"InProgress"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
 	// With admin role should also succeed.
-	req = httptest.NewRequest(http.MethodPatch, "/workitems/test-id-1", bytes.NewBufferString(body))
+	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Role", "admin")
 	w = httptest.NewRecorder()
@@ -338,20 +361,20 @@ func TestDeleteWorkItem(t *testing.T) {
 	mux := setupServer(h)
 
 	// Create.
-	req := httptest.NewRequest(http.MethodPost, "/workitems", bytes.NewBufferString(`{"title":"Delete Me"}`))
+	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"Delete Me"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// Delete.
-	req = httptest.NewRequest(http.MethodDelete, "/workitems/test-id-1", nil)
+	req = httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/test-id-1", nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNoContent, w.Code)
 
 	// Verify gone.
-	req = httptest.NewRequest(http.MethodGet, "/workitems/test-id-1", nil)
+	req = httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/test-id-1", nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -361,7 +384,7 @@ func TestDeleteWorkItemNotFound(t *testing.T) {
 	h := newHandler()
 	mux := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodDelete, "/workitems/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/nonexistent", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -374,13 +397,13 @@ func TestListWorkItems(t *testing.T) {
 	// Create two items.
 	for _, title := range []string{"One", "Two"} {
 		body := `{"title":"` + title + `"}`
-		req := httptest.NewRequest(http.MethodPost, "/workitems", bytes.NewBufferString(body))
+		req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, req)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/workitems?page=1&page_size=10", nil)
+	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems?page=1&page_size=10", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -395,7 +418,7 @@ func TestListWorkItemsInvalidPage(t *testing.T) {
 	h := newHandler()
 	mux := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/workitems?page=-1", nil)
+	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems?page=-1", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -406,7 +429,7 @@ func TestListWorkItemsInvalidPageSize(t *testing.T) {
 	h := newHandler()
 	mux := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/workitems?page_size=999", nil)
+	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems?page_size=999", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -418,7 +441,7 @@ func TestAddRelationship(t *testing.T) {
 	mux := setupServer(h)
 
 	body := `{"type":"depends_on","target_id":"some-target"}`
-	req := httptest.NewRequest(http.MethodPost, "/workitems/owner-id/relationships", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems/owner-id/relationships", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -435,7 +458,7 @@ func TestAddRelationshipInvalidType(t *testing.T) {
 	mux := setupServer(h)
 
 	body := `{"type":"invalid","target_id":"some-target"}`
-	req := httptest.NewRequest(http.MethodPost, "/workitems/owner-id/relationships", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems/owner-id/relationships", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -449,14 +472,14 @@ func TestRemoveRelationship(t *testing.T) {
 
 	// Add first.
 	body := `{"type":"blocks","target_id":"t"}`
-	req := httptest.NewRequest(http.MethodPost, "/workitems/owner/relationships", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems/owner/relationships", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// Remove.
-	req = httptest.NewRequest(http.MethodDelete, "/workitems/owner/relationships/rel-id-1", nil)
+	req = httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/owner/relationships/rel-id-1", nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNoContent, w.Code)
@@ -466,7 +489,7 @@ func TestRemoveRelationshipNotFound(t *testing.T) {
 	h := newHandler()
 	mux := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodDelete, "/workitems/owner/relationships/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/owner/relationships/nonexistent", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -477,7 +500,7 @@ func TestDetectCycles(t *testing.T) {
 	h := newHandler()
 	mux := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/workitems/some-id/cycles", nil)
+	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/some-id/cycles", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
@@ -494,7 +517,7 @@ func TestErrorResponseFormat(t *testing.T) {
 	h := newHandler()
 	mux := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodGet, "/workitems/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/nonexistent", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 

@@ -33,7 +33,7 @@ Thumbs.db
 
 # Build output
 bin/
-lattice
+/lattice
 
 # Air hot reload
 tmp/

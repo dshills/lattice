@@ -13,6 +13,7 @@ import (
 
 // Handler holds dependencies for all HTTP handlers.
 type Handler struct {
+	Projects      store.ProjectStore
 	WorkItems     store.WorkItemStore
 	Relationships store.RelationshipStore
 	Cycles        store.CycleDetector
@@ -20,14 +21,23 @@ type Handler struct {
 
 // RegisterRoutes registers all API routes on the given mux.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /workitems", h.CreateWorkItem)
-	mux.HandleFunc("GET /workitems", h.ListWorkItems)
-	mux.HandleFunc("GET /workitems/{id}", h.GetWorkItem)
-	mux.HandleFunc("PATCH /workitems/{id}", h.UpdateWorkItem)
-	mux.HandleFunc("DELETE /workitems/{id}", h.DeleteWorkItem)
-	mux.HandleFunc("POST /workitems/{id}/relationships", h.AddRelationship)
-	mux.HandleFunc("DELETE /workitems/{id}/relationships/{rel_id}", h.RemoveRelationship)
-	mux.HandleFunc("GET /workitems/{id}/cycles", h.DetectCycles)
+	// Project routes.
+	mux.HandleFunc("POST /projects", h.CreateProject)
+	mux.HandleFunc("GET /projects", h.ListProjects)
+	mux.HandleFunc("GET /projects/{project_id}", h.GetProject)
+	mux.HandleFunc("PATCH /projects/{project_id}", h.UpdateProject)
+	mux.HandleFunc("DELETE /projects/{project_id}", h.DeleteProject)
+
+	// Work item routes scoped under projects.
+	const p = "/projects/{project_id}"
+	mux.HandleFunc("POST "+p+"/workitems", h.CreateWorkItem)
+	mux.HandleFunc("GET "+p+"/workitems", h.ListWorkItems)
+	mux.HandleFunc("GET "+p+"/workitems/{id}", h.GetWorkItem)
+	mux.HandleFunc("PATCH "+p+"/workitems/{id}", h.UpdateWorkItem)
+	mux.HandleFunc("DELETE "+p+"/workitems/{id}", h.DeleteWorkItem)
+	mux.HandleFunc("POST "+p+"/workitems/{id}/relationships", h.AddRelationship)
+	mux.HandleFunc("DELETE "+p+"/workitems/{id}/relationships/{rel_id}", h.RemoveRelationship)
+	mux.HandleFunc("GET "+p+"/workitems/{id}/cycles", h.DetectCycles)
 }
 
 // writeJSON writes a JSON response with the given status code.
@@ -47,6 +57,92 @@ func (h *Handler) projectID(r *http.Request) string {
 	}
 	return domain.DefaultProjectID
 }
+
+// === Project handlers ===
+
+type createProjectRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
+	var req createProjectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_INPUT", "invalid JSON body")
+		return
+	}
+
+	project := &domain.Project{
+		Name:        req.Name,
+		Description: req.Description,
+	}
+
+	if err := h.Projects.Create(r.Context(), project); err != nil {
+		mapDomainError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, project)
+}
+
+func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
+	projects, err := h.Projects.List(r.Context())
+	if err != nil {
+		mapDomainError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"projects": projects})
+}
+
+func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("project_id")
+	project, err := h.Projects.Get(r.Context(), id)
+	if err != nil {
+		mapDomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, project)
+}
+
+type updateProjectRequest struct {
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+}
+
+func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
+	id := r.PathValue("project_id")
+
+	var req updateProjectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_INPUT", "invalid JSON body")
+		return
+	}
+
+	project, err := h.Projects.Update(r.Context(), id, store.ProjectUpdateParams{
+		Name:        req.Name,
+		Description: req.Description,
+	})
+	if err != nil {
+		mapDomainError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, project)
+}
+
+func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("project_id")
+	if err := h.Projects.Delete(r.Context(), id); err != nil {
+		mapDomainError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// === Work item handlers ===
 
 // --- Create ---
 

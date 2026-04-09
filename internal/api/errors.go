@@ -35,6 +35,8 @@ func mapDomainError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", err.Error())
 	case errors.Is(err, domain.ErrInvalidTransition):
 		writeError(w, http.StatusConflict, "INVALID_TRANSITION", err.Error())
+	case errors.Is(err, domain.ErrConflict):
+		writeError(w, http.StatusConflict, "CONFLICT", err.Error())
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "FORBIDDEN", err.Error())
 	case errors.Is(err, domain.ErrValidation):

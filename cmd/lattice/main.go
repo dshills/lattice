@@ -63,6 +63,7 @@ func main() {
 	log.Println("migrations applied")
 
 	h := &api.Handler{
+		Projects:      mysqlstore.NewProjectStore(db),
 		WorkItems:     mysqlstore.NewWorkItemStore(db),
 		Relationships: mysqlstore.NewRelationshipStore(db),
 		Cycles:        graph.NewCycleDetector(db),
