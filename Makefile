@@ -66,15 +66,15 @@ install:
 
 ## migrate: run database migrations up
 migrate:
-	migrate -path $(MIGRATIONS) -database "$(DB_DSN)" up
+	go run ./cmd/migrate up
 
 ## migrate-down: roll back the last migration
 migrate-down:
-	migrate -path $(MIGRATIONS) -database "$(DB_DSN)" down 1
+	go run ./cmd/migrate down 1
 
 ## migrate-status: show current migration version
 migrate-status:
-	migrate -path $(MIGRATIONS) -database "$(DB_DSN)" version
+	@MYSQL_PWD=$(LATTICE_DB_PASSWORD) mysql -u$(LATTICE_DB_USER) -h$(LATTICE_DB_HOST) -P$(LATTICE_DB_PORT) $(LATTICE_DB_NAME) -e "SELECT version FROM schema_migrations ORDER BY version;"
 
 ## clean: remove build artifacts
 clean:

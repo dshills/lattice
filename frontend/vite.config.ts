@@ -14,7 +14,7 @@ export default defineConfig({
   server: {
     port: 5175,
     proxy: {
-      "/workitems": {
+      "/projects": {
         target: "http://localhost:8090",
         changeOrigin: true,
       },

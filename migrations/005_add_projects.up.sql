@@ -6,7 +6,7 @@ CREATE TABLE projects (
     created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     UNIQUE KEY uq_projects_name (name)
-);
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- Create default project for existing data
 INSERT INTO projects (id, name, description)
