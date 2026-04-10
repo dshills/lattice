@@ -1,6 +1,5 @@
 import type { WorkItemState } from "../../lib/types";
 import { STATES, STATE_LABELS, STATE_COLORS } from "../../lib/constants";
-import { isAdmin } from "../../lib/config";
 
 const FORWARD: Record<WorkItemState, WorkItemState[]> = {
   NotDone: ["InProgress"],
@@ -18,16 +17,17 @@ interface StateSelectorProps {
   current: WorkItemState;
   onChange: (state: WorkItemState, override: boolean) => void;
   disabled?: boolean;
+  canOverride?: boolean;
 }
 
 export function StateSelector({
   current,
   onChange,
   disabled,
+  canOverride = false,
 }: StateSelectorProps) {
-  const admin = isAdmin();
   const forward = FORWARD[current];
-  const backward = admin ? BACKWARD[current] : [];
+  const backward = canOverride ? BACKWARD[current] : [];
 
   return (
     <div className="flex flex-wrap gap-1">

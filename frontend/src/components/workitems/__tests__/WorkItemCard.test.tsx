@@ -7,12 +7,15 @@ import type { WorkItem } from "../../../lib/types";
 function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
   return {
     id: "test-id",
+    project_id: "test-project",
     title: "Test Item",
     description: "",
     state: "NotDone",
     tags: [],
     type: "",
     parent_id: null,
+    assignee_id: null,
+    created_by: null,
     relationships: [],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

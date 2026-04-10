@@ -1,13 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { StateSelector } from "../StateSelector";
 
 describe("StateSelector", () => {
-  beforeEach(() => {
-    window.__LATTICE_CONFIG__ = undefined;
-  });
-
-  it("shows forward transition as enabled for non-admin", () => {
+  it("shows forward transition as enabled", () => {
     const onChange = vi.fn();
     render(<StateSelector current="NotDone" onChange={onChange} />);
 
@@ -18,15 +14,22 @@ describe("StateSelector", () => {
     expect(onChange).toHaveBeenCalledWith("InProgress", false);
   });
 
-  it("disables backward transition for non-admin", () => {
-    render(<StateSelector current="InProgress" onChange={vi.fn()} />);
+  it("disables backward transition when canOverride is false", () => {
+    render(
+      <StateSelector
+        current="InProgress"
+        onChange={vi.fn()}
+        canOverride={false}
+      />,
+    );
     expect(screen.getByText("Not Done")).toBeDisabled();
   });
 
-  it("shows backward transition for admin", () => {
-    window.__LATTICE_CONFIG__ = { role: "admin" };
+  it("shows backward transition when canOverride is true", () => {
     const onChange = vi.fn();
-    render(<StateSelector current="InProgress" onChange={onChange} />);
+    render(
+      <StateSelector current="InProgress" onChange={onChange} canOverride />,
+    );
 
     const notDoneBtn = screen.getByText("Not Done (Override)");
     expect(notDoneBtn).not.toBeDisabled();

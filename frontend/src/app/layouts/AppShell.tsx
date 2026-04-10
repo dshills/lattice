@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-rout
 import { CreateWorkItemForm } from "../../components/forms/CreateWorkItemForm";
 import { LoadingState } from "../../components/common/LoadingState";
 import { useProjects } from "../../hooks/useProjects";
+import { useAuth } from "../../hooks/useAuth";
 
 export function AppShell() {
   const [createOpen, setCreateOpen] = useState(false);
@@ -11,6 +12,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const { projectId } = useParams<{ projectId: string }>();
   const { data: projectsData } = useProjects();
+  const { user, logout } = useAuth();
 
   useEffect(() => {
     mainRef.current?.focus();
@@ -120,6 +122,18 @@ export function AppShell() {
                 Create
               </button>
             )}
+            {user && (
+              <span className="text-sm text-gray-500">{user.display_name}</span>
+            )}
+            <button
+              onClick={() => {
+                logout();
+                navigate("/login");
+              }}
+              className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700"
+            >
+              Sign out
+            </button>
           </div>
         </header>
         <main

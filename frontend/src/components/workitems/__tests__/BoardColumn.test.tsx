@@ -16,6 +16,8 @@ function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
     tags: [],
     type: "",
     parent_id: null,
+    assignee_id: null,
+    created_by: null,
     relationships: [],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

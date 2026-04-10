@@ -14,6 +14,8 @@ function makeItem(overrides: Partial<WorkItem> = {}): WorkItem {
     tags: ["bug", "urgent"],
     type: "task",
     parent_id: null,
+    assignee_id: null,
+    created_by: null,
     relationships: [
       { id: "r1", type: "depends_on", target_id: "dep-id" },
     ],

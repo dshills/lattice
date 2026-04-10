@@ -1,15 +1,13 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { apiFetch, ApiClientError } from "../client";
+import { setAccessToken } from "../../authToken";
 
 describe("apiFetch", () => {
   const originalFetch = globalThis.fetch;
 
-  beforeEach(() => {
-    window.__LATTICE_CONFIG__ = undefined;
-  });
-
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    setAccessToken(null);
   });
 
   it("returns parsed JSON on success", async () => {
@@ -75,8 +73,8 @@ describe("apiFetch", () => {
     }
   });
 
-  it("sends X-Role header when admin", async () => {
-    window.__LATTICE_CONFIG__ = { role: "admin" };
+  it("sends Authorization header when token is set", async () => {
+    setAccessToken("test-jwt-token");
 
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -89,12 +87,10 @@ describe("apiFetch", () => {
     const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0];
     const headers = callArgs[1].headers as Headers;
-    expect(headers.get("X-Role")).toBe("admin");
+    expect(headers.get("Authorization")).toBe("Bearer test-jwt-token");
   });
 
-  it("does not send X-Role header for regular user", async () => {
-    window.__LATTICE_CONFIG__ = { role: "user" };
-
+  it("does not send Authorization header when no token", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -106,6 +102,6 @@ describe("apiFetch", () => {
     const callArgs = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
       .calls[0];
     const headers = callArgs[1].headers as Headers;
-    expect(headers.get("X-Role")).toBeNull();
+    expect(headers.get("Authorization")).toBeNull();
   });
 });

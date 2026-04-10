@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router";
 import { ToastProvider } from "../components/common/Toast";
+import { AuthProvider } from "../hooks/useAuth";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -16,7 +17,9 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <ToastProvider>{children}</ToastProvider>
+        <AuthProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
   );

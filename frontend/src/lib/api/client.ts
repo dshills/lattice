@@ -1,5 +1,6 @@
 import type { ApiError } from "../types";
-import { getRole } from "../config";
+import { getAccessToken, setAccessToken } from "../authToken";
+import { refresh } from "./auth";
 
 export class ApiClientError extends Error {
   status: number;
@@ -13,22 +14,11 @@ export class ApiClientError extends Error {
   }
 }
 
-export async function apiFetch<T>(
+async function doFetch<T>(
   path: string,
-  options: RequestInit = {},
+  options: RequestInit,
 ): Promise<T> {
-  const headers = new Headers(options.headers as HeadersInit);
-  headers.set("Content-Type", "application/json");
-
-  const role = getRole();
-  if (role === "admin") {
-    headers.set("X-Role", "admin");
-  }
-
-  const response = await fetch(path, {
-    ...options,
-    headers,
-  });
+  const response = await fetch(path, options);
 
   if (!response.ok) {
     let code = "UNKNOWN";
@@ -50,4 +40,57 @@ export async function apiFetch<T>(
   }
 
   return response.json() as Promise<T>;
+}
+
+function buildOptions(options: RequestInit): RequestInit {
+  const headers = new Headers(options.headers as HeadersInit);
+  headers.set("Content-Type", "application/json");
+
+  const token = getAccessToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  return { ...options, headers, credentials: "include" };
+}
+
+// Shared refresh promise to prevent concurrent refresh requests.
+let refreshPromise: Promise<string> | null = null;
+
+async function refreshToken(): Promise<string> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+  refreshPromise = refresh()
+    .then((res) => {
+      setAccessToken(res.access_token);
+      return res.access_token;
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+  return refreshPromise;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  try {
+    return await doFetch<T>(path, buildOptions(options));
+  } catch (err) {
+    if (err instanceof ApiClientError && err.status === 401) {
+      // Attempt token refresh and retry once.
+      try {
+        await refreshToken();
+        return await doFetch<T>(path, buildOptions(options));
+      } catch {
+        // Refresh failed — redirect to login.
+        setAccessToken(null);
+        window.location.href = "/login";
+        throw err;
+      }
+    }
+    throw err;
+  }
 }

@@ -1,3 +1,11 @@
+export interface User {
+  id: string;
+  email: string;
+  display_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -47,6 +55,9 @@ export interface WorkItem {
   tags: string[];
   type: string;
   parent_id: string | null;
+  assignee_id: string | null;
+  created_by: string | null;
+  assignee_name?: string;
   relationships: Relationship[];
   created_at: string;
   updated_at: string;
@@ -93,6 +104,7 @@ export interface UpdateWorkItemInput {
   type?: string;
   tags?: string[];
   parent_id?: string;
+  assignee_id?: string;
   override?: boolean;
 }
 
