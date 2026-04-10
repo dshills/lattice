@@ -10,8 +10,9 @@ export interface ProjectMember {
   display_name: string;
 }
 
-export function listMembers(projectId: string): Promise<ProjectMember[]> {
-  return apiFetch<ProjectMember[]>(`/projects/${projectId}/members`);
+export async function listMembers(projectId: string): Promise<ProjectMember[]> {
+  const res = await apiFetch<{ members: ProjectMember[] }>(`/projects/${projectId}/members`);
+  return res.members;
 }
 
 export function addMember(
