@@ -64,6 +64,13 @@ func (m *mockWorkItemStore) Update(_ context.Context, _, id string, params store
 	if params.Type != nil {
 		existing.Type = *params.Type
 	}
+	if params.AssigneeID != nil {
+		if *params.AssigneeID == "" {
+			existing.AssigneeID = nil
+		} else {
+			existing.AssigneeID = params.AssigneeID
+		}
+	}
 	result := *existing
 	return &result, nil
 }
@@ -667,6 +674,61 @@ func TestNonOwnerCannotUpdateProject(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestCreateWorkItemSetsCreatedBy(t *testing.T) {
+	h := newHandler()
+	handler := setupServer(h)
+
+	body := `{"title":"With Creator"}`
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var item domain.WorkItem
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&item))
+	require.NotNil(t, item.CreatedBy)
+	assert.Equal(t, "test-user-id", *item.CreatedBy)
+}
+
+func TestUpdateWorkItemAssignee(t *testing.T) {
+	h := newHandler()
+	handler := setupServer(h)
+
+	// Create.
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"Assign Me"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	// Update with assignee_id.
+	assigneeID := "some-user-id"
+	updateBody := `{"assignee_id":"` + assigneeID + `"}`
+	req = withUserContext(httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(updateBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var item domain.WorkItem
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&item))
+	require.NotNil(t, item.AssigneeID)
+	assert.Equal(t, assigneeID, *item.AssigneeID)
+}
+
+func TestListWorkItemsAssigneeFilter(t *testing.T) {
+	h := newHandler()
+	handler := setupServer(h)
+
+	req := withUserContext(httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems?assignee_id=some-user", nil))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestNonOwnerCannotDeleteProject(t *testing.T) {

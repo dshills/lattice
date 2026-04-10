@@ -66,10 +66,11 @@ func (s *WorkItemStore) Create(ctx context.Context, item *domain.WorkItem) error
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO work_items (id, project_id, title, description, state, type, parent_id, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO work_items (id, project_id, title, description, state, type, parent_id, assignee_id, created_by, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		item.ID, item.ProjectID, item.Title, item.Description, string(item.State),
 		nullableString(item.Type), nullableStringPtr(item.ParentID),
+		nullableStringPtr(item.AssigneeID), nullableStringPtr(item.CreatedBy),
 		item.CreatedAt, item.UpdatedAt,
 	)
 	if err != nil {
@@ -80,14 +81,26 @@ func (s *WorkItemStore) Create(ctx context.Context, item *domain.WorkItem) error
 		return err
 	}
 
+	// Resolve assignee display name if assigned.
+	if item.AssigneeID != nil {
+		var name string
+		if err := tx.QueryRowContext(ctx, "SELECT display_name FROM users WHERE id = ?", *item.AssigneeID).Scan(&name); err == nil {
+			item.AssigneeName = name
+		}
+	}
+
 	return tx.Commit()
 }
 
 // Get retrieves a WorkItem by ID within a project, including its tags and relationships.
 func (s *WorkItemStore) Get(ctx context.Context, projectID, id string) (*domain.WorkItem, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, project_id, title, description, state, type, parent_id, created_at, updated_at
-		 FROM work_items WHERE id = ? AND project_id = ?`, id, projectID)
+		`SELECT w.id, w.project_id, w.title, w.description, w.state, w.type, w.parent_id,
+		        w.assignee_id, w.created_by, w.created_at, w.updated_at,
+		        COALESCE(u.display_name, '') AS assignee_name
+		 FROM work_items w
+		 LEFT JOIN users u ON u.id = w.assignee_id
+		 WHERE w.id = ? AND w.project_id = ?`, id, projectID)
 
 	item, err := scanWorkItem(row)
 	if err != nil {
@@ -121,10 +134,10 @@ func (s *WorkItemStore) Update(ctx context.Context, projectID, id string, params
 
 	// Fetch current state under lock.
 	row := tx.QueryRowContext(ctx,
-		`SELECT id, project_id, title, description, state, type, parent_id, created_at, updated_at
+		`SELECT id, project_id, title, description, state, type, parent_id, assignee_id, created_by, created_at, updated_at
 		 FROM work_items WHERE id = ? AND project_id = ? FOR UPDATE`, id, projectID)
 
-	existing, err := scanWorkItem(row)
+	existing, err := scanWorkItemFrom(row)
 	if err != nil {
 		return nil, err
 	}
@@ -152,6 +165,13 @@ func (s *WorkItemStore) Update(ctx context.Context, projectID, id string, params
 			existing.ParentID = nil // explicitly unset parent
 		} else {
 			existing.ParentID = params.ParentID
+		}
+	}
+	if params.AssigneeID != nil {
+		if *params.AssigneeID == "" {
+			existing.AssigneeID = nil // unassign
+		} else {
+			existing.AssigneeID = params.AssigneeID
 		}
 	}
 	existing.UpdatedAt = time.Now().UTC()
@@ -186,10 +206,11 @@ func (s *WorkItemStore) Update(ctx context.Context, projectID, id string, params
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`UPDATE work_items SET title=?, description=?, state=?, type=?, parent_id=?, updated_at=?
+		`UPDATE work_items SET title=?, description=?, state=?, type=?, parent_id=?, assignee_id=?, updated_at=?
 		 WHERE id=?`,
 		existing.Title, existing.Description, string(existing.State),
 		nullableString(existing.Type), nullableStringPtr(existing.ParentID),
+		nullableStringPtr(existing.AssigneeID),
 		existing.UpdatedAt, existing.ID,
 	)
 	if err != nil {
@@ -218,6 +239,15 @@ func (s *WorkItemStore) Update(ctx context.Context, projectID, id string, params
 		return nil, fmt.Errorf("reload relationships: %w", err)
 	}
 	existing.Relationships = rels
+
+	// Resolve assignee display name within the transaction.
+	if existing.AssigneeID != nil {
+		var name string
+		err := tx.QueryRowContext(ctx, "SELECT display_name FROM users WHERE id = ?", *existing.AssigneeID).Scan(&name)
+		if err == nil {
+			existing.AssigneeName = name
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit update: %w", err)
@@ -388,34 +418,75 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
-// scanWorkItemFrom scans a WorkItem from any scanner (Row or Rows).
-func scanWorkItemFrom(s scanner) (*domain.WorkItem, error) {
-	var item domain.WorkItem
-	var state string
-	var typ sql.NullString
-	var parentID sql.NullString
+// workItemFields holds the raw scanned values from a work_items row.
+type workItemFields struct {
+	item       domain.WorkItem
+	state      string
+	typ        sql.NullString
+	parentID   sql.NullString
+	assigneeID sql.NullString
+	createdBy  sql.NullString
+}
 
-	err := s.Scan(&item.ID, &item.ProjectID, &item.Title, &item.Description, &state,
-		&typ, &parentID, &item.CreatedAt, &item.UpdatedAt)
-	if err != nil {
+// toWorkItem converts scanned fields into a populated WorkItem.
+func (f *workItemFields) toWorkItem() *domain.WorkItem {
+	f.item.State = domain.State(f.state)
+	if f.typ.Valid {
+		f.item.Type = f.typ.String
+	}
+	if f.parentID.Valid {
+		f.item.ParentID = &f.parentID.String
+	}
+	if f.assigneeID.Valid {
+		f.item.AssigneeID = &f.assigneeID.String
+	}
+	if f.createdBy.Valid {
+		f.item.CreatedBy = &f.createdBy.String
+	}
+	return &f.item
+}
+
+// baseScanDests returns the scan destinations for the base work_items columns.
+func (f *workItemFields) baseScanDests() []any {
+	return []any{
+		&f.item.ID, &f.item.ProjectID, &f.item.Title, &f.item.Description, &f.state,
+		&f.typ, &f.parentID, &f.assigneeID, &f.createdBy, &f.item.CreatedAt, &f.item.UpdatedAt,
+	}
+}
+
+// scanWorkItemFrom scans a WorkItem from any scanner (Row or Rows).
+// Expects columns: id, project_id, title, description, state, type, parent_id,
+// assignee_id, created_by, created_at, updated_at.
+func scanWorkItemFrom(s scanner) (*domain.WorkItem, error) {
+	var f workItemFields
+	if err := s.Scan(f.baseScanDests()...); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, domain.ErrNotFound
 		}
 		return nil, fmt.Errorf("scan work_item: %w", err)
 	}
+	return f.toWorkItem(), nil
+}
 
-	item.State = domain.State(state)
-	if typ.Valid {
-		item.Type = typ.String
+// scanWorkItemWithName scans a WorkItem plus assignee_name from a JOIN query.
+// Expects the same columns as scanWorkItemFrom plus assignee_name at the end.
+func scanWorkItemWithName(s scanner) (*domain.WorkItem, error) {
+	var f workItemFields
+	var assigneeName string
+	dests := append(f.baseScanDests(), &assigneeName)
+	if err := s.Scan(dests...); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, domain.ErrNotFound
+		}
+		return nil, fmt.Errorf("scan work_item: %w", err)
 	}
-	if parentID.Valid {
-		item.ParentID = &parentID.String
-	}
-	return &item, nil
+	item := f.toWorkItem()
+	item.AssigneeName = assigneeName
+	return item, nil
 }
 
 func scanWorkItem(row *sql.Row) (*domain.WorkItem, error) {
-	return scanWorkItemFrom(row)
+	return scanWorkItemWithName(row)
 }
 
 // batchLoadItems loads full WorkItem structs for a slice of IDs using 3 queries
@@ -429,9 +500,13 @@ func (s *WorkItemStore) batchLoadItems(ctx context.Context, ids []string) ([]dom
 	}
 	inClause := strings.Join(placeholders, ", ")
 
-	// 1. Load items.
-	itemQuery := `SELECT id, project_id, title, description, state, type, parent_id, created_at, updated_at
-		FROM work_items WHERE id IN (` + inClause + `)`
+	// 1. Load items with assignee name via LEFT JOIN.
+	itemQuery := `SELECT w.id, w.project_id, w.title, w.description, w.state, w.type, w.parent_id,
+		w.assignee_id, w.created_by, w.created_at, w.updated_at,
+		COALESCE(u.display_name, '') AS assignee_name
+		FROM work_items w
+		LEFT JOIN users u ON u.id = w.assignee_id
+		WHERE w.id IN (` + inClause + `)`
 	rows, err := s.db.QueryContext(ctx, itemQuery, idArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("batch load items: %w", err)
@@ -440,7 +515,7 @@ func (s *WorkItemStore) batchLoadItems(ctx context.Context, ids []string) ([]dom
 
 	itemMap := make(map[string]*domain.WorkItem, len(ids))
 	for rows.Next() {
-		item, err := scanWorkItemFrom(rows)
+		item, err := scanWorkItemWithName(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -630,6 +705,14 @@ func buildWhereClause(filter store.ListFilter) (string, []any) {
 	if filter.ParentID != nil {
 		conditions = append(conditions, "w.parent_id = ?")
 		args = append(args, *filter.ParentID)
+	}
+	if filter.AssigneeID != nil {
+		if *filter.AssigneeID == "" {
+			conditions = append(conditions, "w.assignee_id IS NULL")
+		} else {
+			conditions = append(conditions, "w.assignee_id = ?")
+			args = append(args, *filter.AssigneeID)
+		}
 	}
 	for _, tag := range filter.Tags {
 		conditions = append(conditions, "EXISTS (SELECT 1 FROM work_item_tags t2 WHERE t2.item_id = w.id AND t2.tag = ?)")

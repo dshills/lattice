@@ -17,6 +17,7 @@ type UpdateParams struct {
 	Type        *string
 	Tags        []string // nil = don't change, non-nil = replace
 	ParentID    *string  // nil = don't change, &"" = unset
+	AssigneeID  *string  // nil = don't change, &"" = unassign
 	Override    bool
 }
 
@@ -75,6 +76,7 @@ type ListFilter struct {
 	Tags               []string
 	Type               *string
 	ParentID           *string
+	AssigneeID         *string
 	RelationshipType   *domain.RelationshipType
 	RelationshipTarget *string
 	IsBlocked          *bool

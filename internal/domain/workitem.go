@@ -55,6 +55,9 @@ type WorkItem struct {
 	Tags          []string       `json:"tags"`
 	Type          string         `json:"type,omitempty"`
 	ParentID      *string        `json:"parent_id"`
+	AssigneeID    *string        `json:"assignee_id"`
+	CreatedBy     *string        `json:"created_by"`
+	AssigneeName  string         `json:"assignee_name,omitempty"`
 	Relationships []Relationship `json:"relationships"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`

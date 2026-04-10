@@ -217,6 +217,11 @@ func (h *Handler) CreateWorkItem(w http.ResponseWriter, r *http.Request) {
 		ParentID:    req.ParentID,
 	}
 
+	// Set created_by from authenticated user.
+	if userID := UserIDFromContext(r.Context()); userID != "" {
+		item.CreatedBy = &userID
+	}
+
 	if err := h.WorkItems.Create(r.Context(), item); err != nil {
 		mapDomainError(w, err)
 		return
@@ -247,6 +252,7 @@ type updateRequest struct {
 	Type        *string  `json:"type"`
 	Tags        []string `json:"tags"`
 	ParentID    *string  `json:"parent_id"`
+	AssigneeID  *string  `json:"assignee_id"`
 	Override    bool     `json:"override"`
 }
 
@@ -278,6 +284,7 @@ func (h *Handler) UpdateWorkItem(w http.ResponseWriter, r *http.Request) {
 		Type:        req.Type,
 		Tags:        req.Tags,
 		ParentID:    req.ParentID,
+		AssigneeID:  req.AssigneeID,
 		Override:    req.Override,
 	}
 	if req.State != nil {
@@ -349,6 +356,9 @@ func parseListFilter(r *http.Request) (store.ListFilter, error) {
 	}
 	if v := q.Get("parent_id"); v != "" {
 		f.ParentID = &v
+	}
+	if v := q.Get("assignee_id"); v != "" {
+		f.AssigneeID = &v
 	}
 	if v := q.Get("relationship_type"); v != "" {
 		rt := domain.RelationshipType(v)
