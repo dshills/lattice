@@ -15,6 +15,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/dshills/lattice/internal/api"
+	"github.com/dshills/lattice/internal/auth"
 	"github.com/dshills/lattice/internal/graph"
 	mysqlstore "github.com/dshills/lattice/internal/store/mysql"
 )
@@ -36,6 +37,26 @@ func main() {
 	addr := os.Getenv("LATTICE_ADDR")
 	if addr == "" {
 		addr = ":8090"
+	}
+	jwtSecret := os.Getenv("LATTICE_JWT_SECRET")
+	if len(jwtSecret) < 32 {
+		log.Fatal("LATTICE_JWT_SECRET must be at least 32 characters")
+	}
+	accessTTLStr := os.Getenv("LATTICE_ACCESS_TOKEN_TTL")
+	if accessTTLStr == "" {
+		accessTTLStr = "15m"
+	}
+	refreshTTLStr := os.Getenv("LATTICE_REFRESH_TOKEN_TTL")
+	if refreshTTLStr == "" {
+		refreshTTLStr = "168h"
+	}
+	accessTTL, err := time.ParseDuration(accessTTLStr)
+	if err != nil {
+		log.Fatalf("invalid LATTICE_ACCESS_TOKEN_TTL: %v", err)
+	}
+	refreshTTL, err := time.ParseDuration(refreshTTLStr)
+	if err != nil {
+		log.Fatalf("invalid LATTICE_REFRESH_TOKEN_TTL: %v", err)
 	}
 	migrationsDir := os.Getenv("LATTICE_MIGRATIONS_DIR")
 	if migrationsDir == "" {
@@ -62,6 +83,9 @@ func main() {
 	}
 	log.Println("migrations applied")
 
+	tokenService := auth.NewTokenService(jwtSecret, accessTTL, refreshTTL)
+	userStore := mysqlstore.NewUserStore(db)
+
 	h := &api.Handler{
 		Projects:      mysqlstore.NewProjectStore(db),
 		WorkItems:     mysqlstore.NewWorkItemStore(db),
@@ -69,11 +93,22 @@ func main() {
 		Cycles:        graph.NewCycleDetector(db),
 	}
 
+	authHandler := &api.AuthHandler{
+		Users:  userStore,
+		Tokens: tokenService,
+	}
+
+	userHandler := &api.UserHandler{
+		Users: userStore,
+	}
+
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
+	authHandler.RegisterAuthRoutes(mux)
+	userHandler.RegisterUserRoutes(mux)
 
-	// Apply middleware chain: logging → role extraction → content-type check.
-	handler := api.LoggingMiddleware(api.RoleMiddleware(api.JSONContentType(mux)))
+	// Apply middleware chain: logging → auth → content-type check.
+	handler := api.LoggingMiddleware(api.AuthMiddleware(tokenService, api.JSONContentType(mux)))
 
 	srv := &http.Server{
 		Addr:         addr,
