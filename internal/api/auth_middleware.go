@@ -43,3 +43,8 @@ func UserIDFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(userIDKey{}).(string)
 	return v
 }
+
+// TestSetUserID injects a user ID into the context. Exported for testing only.
+func TestSetUserID(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, userIDKey{}, userID)
+}

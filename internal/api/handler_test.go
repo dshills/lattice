@@ -155,6 +155,29 @@ func (m *mockProjectStore) List(_ context.Context) ([]store.ProjectWithCount, er
 	return []store.ProjectWithCount{}, nil
 }
 
+// mockMembershipStore returns the configured role for all lookups.
+type mockMembershipStore struct {
+	role domain.ProjectRole
+}
+
+func (m *mockMembershipStore) Add(_ context.Context, membership *domain.ProjectMembership) error {
+	membership.ID = "test-membership-id"
+	return nil
+}
+func (m *mockMembershipStore) Remove(_ context.Context, _, _ string) error { return nil }
+func (m *mockMembershipStore) UpdateRole(_ context.Context, _, _ string, _ domain.ProjectRole) error {
+	return nil
+}
+func (m *mockMembershipStore) ListByProject(_ context.Context, _ string) ([]domain.ProjectMembership, error) {
+	return []domain.ProjectMembership{}, nil
+}
+func (m *mockMembershipStore) GetRole(_ context.Context, _, _ string) (domain.ProjectRole, error) {
+	if m.role == "" {
+		return domain.RoleOwner, nil
+	}
+	return m.role, nil
+}
+
 const testProjectPrefix = "/projects/" + domain.DefaultProjectID
 
 func newHandler() *api.Handler {
@@ -163,27 +186,44 @@ func newHandler() *api.Handler {
 		WorkItems:     newMockWorkItemStore(),
 		Relationships: newMockRelationshipStore(),
 		Cycles:        &mockCycleDetector{},
+		Memberships:   &mockMembershipStore{},
 	}
 }
 
-func setupServer(h *api.Handler) *http.ServeMux {
+func newHandlerWithRole(role domain.ProjectRole) *api.Handler {
+	return &api.Handler{
+		Projects:      &mockProjectStore{},
+		WorkItems:     newMockWorkItemStore(),
+		Relationships: newMockRelationshipStore(),
+		Cycles:        &mockCycleDetector{},
+		Memberships:   &mockMembershipStore{role: role},
+	}
+}
+
+func setupServer(h *api.Handler) http.Handler {
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
-	return mux
+	return api.ProjectRoleMiddleware(h.Memberships, mux)
+}
+
+// withUserContext adds a user ID to the request context for auth middleware simulation.
+func withUserContext(req *http.Request) *http.Request {
+	ctx := api.TestSetUserID(req.Context(), "test-user-id")
+	return req.WithContext(ctx)
 }
 
 // --- Tests ---
 
 func TestCreateWorkItem(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
 	body := `{"title":"Test Item","description":"A test","tags":["alpha"]}`
-	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body))
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 
@@ -196,45 +236,45 @@ func TestCreateWorkItem(t *testing.T) {
 
 func TestCreateWorkItemInvalidJSON(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString("{invalid"))
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString("{invalid")))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestCreateWorkItemMissingTitle(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
 	body := `{"description":"no title"}`
-	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body))
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestGetWorkItem(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
 	// Create first.
 	body := `{"title":"Get Me"}`
-	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body))
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// Get.
-	req = httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/test-id-1", nil)
+	req = withUserContext(httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/test-id-1", nil))
 	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var item domain.WorkItem
@@ -244,33 +284,33 @@ func TestGetWorkItem(t *testing.T) {
 
 func TestGetWorkItemNotFound(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/nonexistent", nil)
+	req := withUserContext(httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/nonexistent", nil))
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestUpdateWorkItem(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
 	// Create.
 	createBody := `{"title":"Before"}`
-	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(createBody))
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(createBody)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// Update.
 	updateBody := `{"title":"After","state":"InProgress"}`
-	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(updateBody))
+	req = withUserContext(httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(updateBody)))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var item domain.WorkItem
@@ -281,131 +321,114 @@ func TestUpdateWorkItem(t *testing.T) {
 
 func TestUpdateWorkItemNotFound(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
 	body := `{"title":"x"}`
-	req := httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/nonexistent", bytes.NewBufferString(body))
+	req := withUserContext(httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/nonexistent", bytes.NewBufferString(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestUpdateWorkItemInvalidTransition(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
 	// Create (state=NotDone).
-	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"t"}`))
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"t"}`)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// Try to skip to Completed.
 	body := `{"state":"Completed"}`
-	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(body))
+	req = withUserContext(httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusConflict, w.Code)
 }
 
-func TestUpdateWorkItemBackwardWithAdminOverride(t *testing.T) {
-	h := newHandler()
-	mux := setupServer(h)
+func TestUpdateWorkItemOwnerOverride(t *testing.T) {
+	h := newHandler() // default role = owner
+	handler := setupServer(h)
 
 	// Create and advance to InProgress.
-	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"t"}`))
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"t"}`)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
-	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(`{"state":"InProgress"}`))
+	req = withUserContext(httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(`{"state":"InProgress"}`)))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
-	// Backward transition with override should succeed for any user.
+	// Backward transition with override — owner should succeed.
 	body := `{"state":"NotDone","override":true}`
-	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(body))
+	req = withUserContext(httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	// Advance again so we can test admin path too.
-	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(`{"state":"InProgress"}`))
-	req.Header.Set("Content-Type", "application/json")
-	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code)
-
-	// With admin role should also succeed.
-	req = httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Role", "admin")
-	w = httptest.NewRecorder()
-	// Need to apply middleware for role extraction.
-	handler := api.RoleMiddleware(mux)
 	handler.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestDeleteWorkItem(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
 	// Create.
-	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"Delete Me"}`))
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"Delete Me"}`)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// Delete.
-	req = httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/test-id-1", nil)
+	req = withUserContext(httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/test-id-1", nil))
 	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNoContent, w.Code)
 
 	// Verify gone.
-	req = httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/test-id-1", nil)
+	req = withUserContext(httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/test-id-1", nil))
 	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestDeleteWorkItemNotFound(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/nonexistent", nil)
+	req := withUserContext(httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/nonexistent", nil))
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestListWorkItems(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
 	// Create two items.
 	for _, title := range []string{"One", "Two"} {
 		body := `{"title":"` + title + `"}`
-		req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body))
+		req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body)))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
-		mux.ServeHTTP(w, req)
+		handler.ServeHTTP(w, req)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems?page=1&page_size=10", nil)
+	req := withUserContext(httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems?page=1&page_size=10", nil))
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -416,35 +439,35 @@ func TestListWorkItems(t *testing.T) {
 
 func TestListWorkItemsInvalidPage(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems?page=-1", nil)
+	req := withUserContext(httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems?page=-1", nil))
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestListWorkItemsInvalidPageSize(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems?page_size=999", nil)
+	req := withUserContext(httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems?page_size=999", nil))
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestAddRelationship(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
 	body := `{"type":"depends_on","target_id":"some-target"}`
-	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems/owner-id/relationships", bytes.NewBufferString(body))
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems/owner-id/relationships", bytes.NewBufferString(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 	var rel domain.Relationship
@@ -455,54 +478,54 @@ func TestAddRelationship(t *testing.T) {
 
 func TestAddRelationshipInvalidType(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
 	body := `{"type":"invalid","target_id":"some-target"}`
-	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems/owner-id/relationships", bytes.NewBufferString(body))
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems/owner-id/relationships", bytes.NewBufferString(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestRemoveRelationship(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
 	// Add first.
 	body := `{"type":"blocks","target_id":"t"}`
-	req := httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems/owner/relationships", bytes.NewBufferString(body))
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems/owner/relationships", bytes.NewBufferString(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// Remove.
-	req = httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/owner/relationships/rel-id-1", nil)
+	req = withUserContext(httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/owner/relationships/rel-id-1", nil))
 	w = httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusNoContent, w.Code)
 }
 
 func TestRemoveRelationshipNotFound(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/owner/relationships/nonexistent", nil)
+	req := withUserContext(httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/owner/relationships/nonexistent", nil))
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestDetectCycles(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/some-id/cycles", nil)
+	req := withUserContext(httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/some-id/cycles", nil))
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -515,11 +538,11 @@ func TestDetectCycles(t *testing.T) {
 
 func TestErrorResponseFormat(t *testing.T) {
 	h := newHandler()
-	mux := setupServer(h)
+	handler := setupServer(h)
 
-	req := httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/nonexistent", nil)
+	req := withUserContext(httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/nonexistent", nil))
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, req)
+	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
@@ -532,4 +555,127 @@ func TestErrorResponseFormat(t *testing.T) {
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
 	assert.Equal(t, "NOT_FOUND", resp.Error.Code)
 	assert.NotEmpty(t, resp.Error.Message)
+}
+
+// --- Permission enforcement tests ---
+
+func TestViewerCannotCreate(t *testing.T) {
+	h := newHandlerWithRole(domain.RoleViewer)
+	handler := setupServer(h)
+
+	body := `{"title":"Blocked"}`
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestViewerCannotUpdate(t *testing.T) {
+	h := newHandlerWithRole(domain.RoleViewer)
+	handler := setupServer(h)
+
+	body := `{"title":"x"}`
+	req := withUserContext(httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestViewerCannotDelete(t *testing.T) {
+	h := newHandlerWithRole(domain.RoleViewer)
+	handler := setupServer(h)
+
+	req := withUserContext(httptest.NewRequest(http.MethodDelete, testProjectPrefix+"/workitems/test-id-1", nil))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestMemberCannotOverride(t *testing.T) {
+	h := newHandlerWithRole(domain.RoleMember)
+	handler := setupServer(h)
+
+	// Create item (member can create).
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"t"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	// Advance to InProgress.
+	req = withUserContext(httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(`{"state":"InProgress"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// Override requires owner — member should get 403.
+	body := `{"state":"NotDone","override":true}`
+	req = withUserContext(httptest.NewRequest(http.MethodPatch, testProjectPrefix+"/workitems/test-id-1", bytes.NewBufferString(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestMemberCanCreate(t *testing.T) {
+	h := newHandlerWithRole(domain.RoleMember)
+	handler := setupServer(h)
+
+	body := `{"title":"Member Item"}`
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+}
+
+func TestViewerCanRead(t *testing.T) {
+	// Use owner handler to create, then viewer handler to read.
+	h := newHandler()
+	handler := setupServer(h)
+
+	// Create as owner.
+	req := withUserContext(httptest.NewRequest(http.MethodPost, testProjectPrefix+"/workitems", bytes.NewBufferString(`{"title":"Readable"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	// Read as viewer — the mock returns whatever role is configured, so we
+	// just verify GET doesn't require write access.
+	req = withUserContext(httptest.NewRequest(http.MethodGet, testProjectPrefix+"/workitems/test-id-1", nil))
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestNonOwnerCannotUpdateProject(t *testing.T) {
+	h := newHandlerWithRole(domain.RoleMember)
+	handler := setupServer(h)
+
+	body := `{"name":"New Name"}`
+	req := withUserContext(httptest.NewRequest(http.MethodPatch, testProjectPrefix, bytes.NewBufferString(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestNonOwnerCannotDeleteProject(t *testing.T) {
+	h := newHandlerWithRole(domain.RoleMember)
+	handler := setupServer(h)
+
+	req := withUserContext(httptest.NewRequest(http.MethodDelete, testProjectPrefix, nil))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }

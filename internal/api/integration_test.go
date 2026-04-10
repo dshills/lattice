@@ -37,7 +37,7 @@ func integrationServer(t *testing.T) *httptest.Server {
 	require.NoError(t, mysqlstore.MigrateUp(context.Background(), db, "../../migrations"))
 
 	// Clean tables (order matters for FK constraints).
-	for _, table := range []string{"work_item_relationships", "work_item_tags", "work_items"} {
+	for _, table := range []string{"work_item_relationships", "work_item_tags", "work_items", "project_memberships", "users"} {
 		_, err := db.Exec("DELETE FROM " + table)
 		require.NoError(t, err)
 	}
@@ -45,18 +45,38 @@ func integrationServer(t *testing.T) *httptest.Server {
 	_, err = db.Exec("DELETE FROM projects WHERE id != ?", domain.DefaultProjectID)
 	require.NoError(t, err)
 
+	// Create a test user and make them owner of the default project.
+	userStore := mysqlstore.NewUserStore(db)
+	testUser := &domain.User{Email: "integration@test.com", DisplayName: "IntegrationTest"}
+	require.NoError(t, userStore.Create(context.Background(), testUser, "$2a$12$dummyhashforintegrationtests"))
+
+	membershipStore := mysqlstore.NewMembershipStore(db)
+	require.NoError(t, membershipStore.Add(context.Background(), &domain.ProjectMembership{
+		ProjectID: domain.DefaultProjectID,
+		UserID:    testUser.ID,
+		Role:      domain.RoleOwner,
+	}))
+
 	h := &api.Handler{
 		Projects:      mysqlstore.NewProjectStore(db),
 		WorkItems:     mysqlstore.NewWorkItemStore(db),
 		Relationships: mysqlstore.NewRelationshipStore(db),
 		Cycles:        graph.NewCycleDetector(db),
+		Memberships:   membershipStore,
+		Users:         mysqlstore.NewUserStore(db),
 	}
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
-	handler := api.RoleMiddleware(api.JSONContentType(mux))
 
-	return httptest.NewServer(handler)
+	// Inject the test user ID into all requests and apply project role middleware.
+	roleHandler := api.ProjectRoleMiddleware(membershipStore, api.JSONContentType(mux))
+	withUser := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := api.TestSetUserID(r.Context(), testUser.ID)
+		roleHandler.ServeHTTP(w, r.WithContext(ctx))
+	})
+
+	return httptest.NewServer(withUser)
 }
 
 func postJSON(t *testing.T, url string, body any, headers ...string) *http.Response {
@@ -184,15 +204,9 @@ func TestIntegration_StateTransitions(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 	_ = resp.Body.Close()
 
-	// Backward with override but no admin should fail.
-	resp = patchJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+item.ID, map[string]any{"state": "NotDone", "override": true})
-	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
-	_ = resp.Body.Close()
-
-	// Backward with override + admin should succeed.
+	// Backward with override should succeed (test user is owner).
 	resp = patchJSON(t, srv.URL+integrationProjectPrefix+"/workitems/"+item.ID,
-		map[string]any{"state": "NotDone", "override": true},
-		"X-Role", "admin")
+		map[string]any{"state": "NotDone", "override": true})
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	result := decodeJSON[domain.WorkItem](t, resp)
 	assert.Equal(t, domain.NotDone, result.State)

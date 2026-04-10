@@ -85,12 +85,15 @@ func main() {
 
 	tokenService := auth.NewTokenService(jwtSecret, accessTTL, refreshTTL)
 	userStore := mysqlstore.NewUserStore(db)
+	membershipStore := mysqlstore.NewMembershipStore(db)
 
 	h := &api.Handler{
 		Projects:      mysqlstore.NewProjectStore(db),
 		WorkItems:     mysqlstore.NewWorkItemStore(db),
 		Relationships: mysqlstore.NewRelationshipStore(db),
 		Cycles:        graph.NewCycleDetector(db),
+		Memberships:   membershipStore,
+		Users:         userStore,
 	}
 
 	authHandler := &api.AuthHandler{
@@ -107,8 +110,11 @@ func main() {
 	authHandler.RegisterAuthRoutes(mux)
 	userHandler.RegisterUserRoutes(mux)
 
-	// Apply middleware chain: logging → auth → content-type check.
-	handler := api.LoggingMiddleware(api.AuthMiddleware(tokenService, api.JSONContentType(mux)))
+	// Apply middleware chain: logging → auth → project role → content-type check.
+	handler := api.LoggingMiddleware(
+		api.AuthMiddleware(tokenService,
+			api.ProjectRoleMiddleware(membershipStore,
+				api.JSONContentType(mux))))
 
 	srv := &http.Server{
 		Addr:         addr,

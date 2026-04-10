@@ -17,6 +17,8 @@ type Handler struct {
 	WorkItems     store.WorkItemStore
 	Relationships store.RelationshipStore
 	Cycles        store.CycleDetector
+	Memberships   store.MembershipStore
+	Users         store.UserStore
 }
 
 // RegisterRoutes registers all API routes on the given mux.
@@ -38,6 +40,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p+"/workitems/{id}/relationships", h.AddRelationship)
 	mux.HandleFunc("DELETE "+p+"/workitems/{id}/relationships/{rel_id}", h.RemoveRelationship)
 	mux.HandleFunc("GET "+p+"/workitems/{id}/cycles", h.DetectCycles)
+
+	// Member management routes.
+	mux.HandleFunc("GET "+p+"/members", h.ListMembers)
+	mux.HandleFunc("POST "+p+"/members", h.AddMember)
+	mux.HandleFunc("PATCH "+p+"/members/{user_id}", h.UpdateMemberRole)
+	mux.HandleFunc("DELETE "+p+"/members/{user_id}", h.RemoveMember)
 }
 
 // writeJSON writes a JSON response with the given status code.
@@ -83,6 +91,20 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-add creator as owner.
+	userID := UserIDFromContext(r.Context())
+	if userID != "" && h.Memberships != nil {
+		membership := &domain.ProjectMembership{
+			ProjectID: project.ID,
+			UserID:    userID,
+			Role:      domain.RoleOwner,
+		}
+		if err := h.Memberships.Add(r.Context(), membership); err != nil {
+			mapDomainError(w, err)
+			return
+		}
+	}
+
 	writeJSON(w, http.StatusCreated, project)
 }
 
@@ -91,6 +113,18 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		mapDomainError(w, err)
 		return
+	}
+
+	// Filter to only projects the user is a member of.
+	userID := UserIDFromContext(r.Context())
+	if userID != "" && h.Memberships != nil {
+		filtered := make([]store.ProjectWithCount, 0, len(projects))
+		for _, p := range projects {
+			if _, err := h.Memberships.GetRole(r.Context(), p.ID, userID); err == nil {
+				filtered = append(filtered, p)
+			}
+		}
+		projects = filtered
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"projects": projects})
@@ -112,6 +146,10 @@ type updateProjectRequest struct {
 }
 
 func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
+	if err := requireOwner(r.Context()); err != nil {
+		mapDomainError(w, err)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 	id := r.PathValue("project_id")
 
@@ -134,6 +172,10 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	if err := requireOwner(r.Context()); err != nil {
+		mapDomainError(w, err)
+		return
+	}
 	id := r.PathValue("project_id")
 	if err := h.Projects.Delete(r.Context(), id); err != nil {
 		mapDomainError(w, err)
@@ -155,6 +197,10 @@ type createRequest struct {
 }
 
 func (h *Handler) CreateWorkItem(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteAccess(r.Context()); err != nil {
+		mapDomainError(w, err)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 	var req createRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -205,6 +251,10 @@ type updateRequest struct {
 }
 
 func (h *Handler) UpdateWorkItem(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteAccess(r.Context()); err != nil {
+		mapDomainError(w, err)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 	id := r.PathValue("id")
 
@@ -212,6 +262,14 @@ func (h *Handler) UpdateWorkItem(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_INPUT", "invalid JSON body")
 		return
+	}
+
+	// Override requires owner role.
+	if req.Override {
+		if err := requireOwner(r.Context()); err != nil {
+			mapDomainError(w, err)
+			return
+		}
 	}
 
 	params := store.UpdateParams{
@@ -240,6 +298,10 @@ func (h *Handler) UpdateWorkItem(w http.ResponseWriter, r *http.Request) {
 // --- Delete ---
 
 func (h *Handler) DeleteWorkItem(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteAccess(r.Context()); err != nil {
+		mapDomainError(w, err)
+		return
+	}
 	projectID := h.projectID(r)
 	id := r.PathValue("id")
 	if err := h.WorkItems.Delete(r.Context(), projectID, id); err != nil {
@@ -346,6 +408,10 @@ type addRelationshipRequest struct {
 }
 
 func (h *Handler) AddRelationship(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteAccess(r.Context()); err != nil {
+		mapDomainError(w, err)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 	ownerID := r.PathValue("id")
 
@@ -369,6 +435,10 @@ func (h *Handler) AddRelationship(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RemoveRelationship(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteAccess(r.Context()); err != nil {
+		mapDomainError(w, err)
+		return
+	}
 	ownerID := r.PathValue("id")
 	relID := r.PathValue("rel_id")
 

@@ -1,26 +1,11 @@
 package api
 
 import (
-	"context"
 	"log"
 	"mime"
 	"net/http"
 	"time"
 )
-
-type contextKey string
-
-const roleKey contextKey = "role"
-
-// RoleMiddleware extracts the X-Role header and stores isAdmin in context.
-func RoleMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		role := r.Header.Get("X-Role")
-		isAdmin := role == "admin"
-		ctx := context.WithValue(r.Context(), roleKey, isAdmin)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
 
 // LoggingMiddleware logs each request with method, path, status, and duration.
 func LoggingMiddleware(next http.Handler) http.Handler {
