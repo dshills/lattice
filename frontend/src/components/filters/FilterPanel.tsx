@@ -1,5 +1,6 @@
 import type { ListFilter, WorkItemState } from "../../lib/types";
 import { STATES, STATE_LABELS } from "../../lib/constants";
+import { useAuth } from "../../hooks/useAuth";
 
 type FilterKey = keyof ListFilter;
 
@@ -16,6 +17,8 @@ export function FilterPanel({
   clearFilters,
   activeFilterCount,
 }: FilterPanelProps) {
+  const { user } = useAuth();
+
   return (
     <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-4" role="search" aria-label="Filter work items">
       <div className="flex items-center justify-between">
@@ -125,6 +128,31 @@ export function FilterPanel({
           </button>
         </div>
       </fieldset>
+
+      {/* Assigned to me */}
+      {user && (
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500">
+            Assignee
+          </label>
+          <button
+            onClick={() =>
+              setFilter(
+                "assignee_id",
+                filters.assignee_id === user.id ? undefined : user.id,
+              )
+            }
+            aria-pressed={filters.assignee_id === user.id}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              filters.assignee_id === user.id
+                ? "bg-blue-100 text-blue-800"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            Assigned to me
+          </button>
+        </div>
+      )}
     </div>
   );
 }

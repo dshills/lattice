@@ -4,7 +4,7 @@ import type { WorkItem } from "../../lib/types";
 
 interface ParentChildPanelProps {
   item: WorkItem;
-  onChangeParent: (parentId: string | null) => void;
+  onChangeParent?: (parentId: string | null) => void;
 }
 
 export function ParentChildPanel({
@@ -30,12 +30,14 @@ export function ParentChildPanel({
             >
               {item.parent_id}
             </Link>
-            <button
-              onClick={() => onChangeParent(null)}
-              className="text-xs text-gray-400 hover:text-red-500"
-            >
-              Remove
-            </button>
+            {onChangeParent && (
+              <button
+                onClick={() => onChangeParent(null)}
+                className="text-xs text-gray-400 hover:text-red-500"
+              >
+                Remove
+              </button>
+            )}
           </div>
         ) : (
           <p className="text-sm text-gray-400">None</p>

@@ -2,6 +2,14 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { FilterPanel } from "../FilterPanel";
 
+vi.mock("../../../hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: { id: "user-1", email: "test@test.com", display_name: "Test User" },
+    isAuthenticated: true,
+    isLoading: false,
+  }),
+}));
+
 describe("FilterPanel", () => {
   const defaultProps = {
     filters: {},

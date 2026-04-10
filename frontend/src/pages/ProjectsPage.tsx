@@ -109,27 +109,44 @@ export function ProjectsPage() {
                 )}
               </div>
               <div className="flex items-center gap-3">
+                {project.role && (
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      project.role === "owner"
+                        ? "bg-purple-100 text-purple-800"
+                        : project.role === "member"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {project.role}
+                  </span>
+                )}
                 <span className="text-sm text-gray-400">
                   {project.item_count} item{project.item_count !== 1 ? "s" : ""}
                 </span>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    openEdit(project);
-                  }}
-                  className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setDeleteProject(project);
-                  }}
-                  className="rounded px-2 py-1 text-xs text-red-500 hover:bg-red-50"
-                >
-                  Delete
-                </button>
+                {project.role === "owner" && (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        openEdit(project);
+                      }}
+                      className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setDeleteProject(project);
+                      }}
+                      className="rounded px-2 py-1 text-xs text-red-500 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </>
+                )}
               </div>
             </Link>
           ))}

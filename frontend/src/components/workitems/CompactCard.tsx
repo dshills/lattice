@@ -3,6 +3,7 @@ import { useProjectId } from "../../hooks/useProjectId";
 import type { WorkItem } from "../../lib/types";
 import { StateBadge } from "./StateBadge";
 import { TypeBadge } from "./TypeBadge";
+import { UserInitials } from "./UserInitials";
 
 export function CompactCard({ item }: { item: WorkItem }) {
   const projectId = useProjectId();
@@ -23,6 +24,9 @@ export function CompactCard({ item }: { item: WorkItem }) {
           <span className="text-xs text-red-500" title="Blocked">
             &#9888;
           </span>
+        )}
+        {item.assignee_name && (
+          <UserInitials name={item.assignee_name} />
         )}
       </div>
     </Link>

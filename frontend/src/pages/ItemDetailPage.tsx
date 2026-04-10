@@ -7,12 +7,14 @@ import { InlineEditableText } from "../components/common/InlineEditableText";
 import { LoadingState } from "../components/common/LoadingState";
 import { ErrorState } from "../components/common/ErrorState";
 import { StateSelector } from "../components/workitems/StateSelector";
+import { AssigneeSelector } from "../components/workitems/AssigneeSelector";
 import { TagEditor } from "../components/forms/TagEditor";
 import { ParentChildPanel } from "../components/forms/ParentChildPanel";
 import { RelationshipSummary } from "../components/workitems/RelationshipSummary";
 import { RelationshipEditor } from "../components/forms/RelationshipEditor";
 import { ConfirmDialog } from "../components/common/ConfirmDialog";
 import { useProjectId } from "../hooks/useProjectId";
+import { useProjectRole } from "../hooks/useProjectRole";
 import type { RelationshipType, WorkItemState } from "../lib/types";
 
 export function ItemDetailPage() {
@@ -21,6 +23,7 @@ export function ItemDetailPage() {
   const navigate = useNavigate();
   const { data: item, isLoading, error, refetch } = useWorkItem(projectId, id!);
   const { updateMutation, deleteMutation } = useWorkItemMutations(projectId);
+  const { canWrite, isOwner } = useProjectRole(projectId);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [cycleWarning, setCycleWarning] = useState<string | null>(null);
   const { addRelationshipMutation, removeRelationshipMutation } =
@@ -73,6 +76,17 @@ export function ItemDetailPage() {
     [id, updateMutation],
   );
 
+  const handleAssigneeChange = useCallback(
+    (assigneeId: string | null) => {
+      if (!id) return;
+      updateMutation.mutate({
+        id,
+        input: { assignee_id: assigneeId ?? "" },
+      });
+    },
+    [id, updateMutation],
+  );
+
   const handleAddRelationship = useCallback(
     (type: RelationshipType, targetId: string) => {
       addRelationshipMutation.mutate({ type, target_id: targetId });
@@ -92,7 +106,7 @@ export function ItemDetailPage() {
     deleteMutation.mutate(id, {
       onSuccess: () => navigate(`/projects/${projectId}/board`),
     });
-  }, [id, deleteMutation, navigate]);
+  }, [id, deleteMutation, navigate, projectId]);
 
   if (isLoading) {
     return <LoadingState />;
@@ -113,19 +127,29 @@ export function ItemDetailPage() {
 
       {/* Main content */}
       <div className="space-y-6">
-        <InlineEditableText
-          value={item.title}
-          onSave={saveField("title")}
-          className="text-xl font-semibold"
-          placeholder="Title"
-        />
+        {canWrite ? (
+          <InlineEditableText
+            value={item.title}
+            onSave={saveField("title")}
+            className="text-xl font-semibold"
+            placeholder="Title"
+          />
+        ) : (
+          <h1 className="text-xl font-semibold">{item.title}</h1>
+        )}
 
-        <InlineEditableText
-          value={item.description}
-          onSave={saveField("description")}
-          as="textarea"
-          placeholder="Add a description..."
-        />
+        {canWrite ? (
+          <InlineEditableText
+            value={item.description}
+            onSave={saveField("description")}
+            as="textarea"
+            placeholder="Add a description..."
+          />
+        ) : (
+          <p className="text-sm text-gray-700 whitespace-pre-wrap">
+            {item.description || "No description"}
+          </p>
+        )}
 
         <div>
           <h3 className="mb-2 text-sm font-semibold text-gray-500">
@@ -133,15 +157,17 @@ export function ItemDetailPage() {
           </h3>
           <RelationshipSummary
             relationships={item.relationships}
-            onRemove={handleRemoveRelationship}
+            onRemove={canWrite ? handleRemoveRelationship : undefined}
           />
-          <div className="mt-3">
-            <RelationshipEditor
-              sourceId={item.id}
-              onAdd={handleAddRelationship}
-              isPending={addRelationshipMutation.isPending}
-            />
-          </div>
+          {canWrite && (
+            <div className="mt-3">
+              <RelationshipEditor
+                sourceId={item.id}
+                onAdd={handleAddRelationship}
+                isPending={addRelationshipMutation.isPending}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -154,41 +180,83 @@ export function ItemDetailPage() {
           <StateSelector
             current={item.state}
             onChange={handleStateChange}
-            disabled={updateMutation.isPending}
+            disabled={!canWrite || updateMutation.isPending}
+            canOverride={isOwner}
           />
+        </div>
+
+        <div>
+          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Assignee
+          </h4>
+          {canWrite ? (
+            <AssigneeSelector
+              value={item.assignee_id}
+              onChange={handleAssigneeChange}
+              disabled={updateMutation.isPending}
+            />
+          ) : (
+            <p className="text-sm text-gray-700">
+              {item.assignee_name || "Unassigned"}
+            </p>
+          )}
         </div>
 
         <div>
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
             Type
           </h4>
-          <InlineEditableText
-            value={item.type}
-            onSave={saveField("type")}
-            placeholder="Set type..."
-          />
+          {canWrite ? (
+            <InlineEditableText
+              value={item.type}
+              onSave={saveField("type")}
+              placeholder="Set type..."
+            />
+          ) : (
+            <p className="text-sm text-gray-700">{item.type || "-"}</p>
+          )}
         </div>
 
         <div>
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
             Tags
           </h4>
-          <TagEditor tags={item.tags} onUpdate={handleTagsUpdate} />
+          {canWrite ? (
+            <TagEditor tags={item.tags} onUpdate={handleTagsUpdate} />
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {item.tags.length > 0
+                ? item.tags.map((t) => (
+                    <span
+                      key={t}
+                      className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+                    >
+                      {t}
+                    </span>
+                  ))
+                : <span className="text-sm text-gray-400">None</span>}
+            </div>
+          )}
         </div>
 
-        <ParentChildPanel item={item} onChangeParent={handleParentChange} />
+        <ParentChildPanel
+          item={item}
+          onChangeParent={canWrite ? handleParentChange : undefined}
+        />
 
         <div className="text-xs text-gray-400 space-y-1">
           <p>Created: {new Date(item.created_at).toLocaleString()}</p>
           <p>Updated: {new Date(item.updated_at).toLocaleString()}</p>
         </div>
 
-        <button
-          onClick={() => setShowDeleteConfirm(true)}
-          className="rounded-md px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
-        >
-          Delete item
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+          >
+            Delete item
+          </button>
+        )}
       </div>
 
       <ConfirmDialog

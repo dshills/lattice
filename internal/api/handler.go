@@ -108,6 +108,11 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, project)
 }
 
+type projectWithRole struct {
+	store.ProjectWithCount
+	Role string `json:"role"`
+}
+
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	projects, err := h.Projects.List(r.Context())
 	if err != nil {
@@ -115,19 +120,27 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Filter to only projects the user is a member of.
+	// Filter to only projects the user is a member of, and include role.
 	userID := UserIDFromContext(r.Context())
 	if userID != "" && h.Memberships != nil {
-		filtered := make([]store.ProjectWithCount, 0, len(projects))
+		var filtered []projectWithRole
 		for _, p := range projects {
-			if _, err := h.Memberships.GetRole(r.Context(), p.ID, userID); err == nil {
-				filtered = append(filtered, p)
+			if role, err := h.Memberships.GetRole(r.Context(), p.ID, userID); err == nil {
+				filtered = append(filtered, projectWithRole{
+					ProjectWithCount: p,
+					Role:             string(role),
+				})
 			}
 		}
-		projects = filtered
+		if filtered == nil {
+			filtered = []projectWithRole{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"projects": filtered})
+		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"projects": projects})
+	// No authenticated user — return empty list to prevent data leakage.
+	writeJSON(w, http.StatusOK, map[string]any{"projects": []store.ProjectWithCount{}})
 }
 
 func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {

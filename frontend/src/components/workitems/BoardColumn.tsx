@@ -8,9 +8,10 @@ interface BoardColumnProps {
   state: WorkItemState;
   items: WorkItem[];
   disabled: boolean;
+  readOnly?: boolean;
 }
 
-export function BoardColumn({ state, items, disabled }: BoardColumnProps) {
+export function BoardColumn({ state, items, disabled, readOnly }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: state,
     disabled,
@@ -42,7 +43,7 @@ export function BoardColumn({ state, items, disabled }: BoardColumnProps) {
         </div>
       )}
 
-      {state === "NotDone" && <QuickAdd />}
+      {state === "NotDone" && !readOnly && <QuickAdd />}
     </div>
   );
 }

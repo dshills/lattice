@@ -2,6 +2,7 @@ import { useNavigate } from "react-router";
 import type { WorkItem } from "../../lib/types";
 import { TagBadge } from "./TagBadge";
 import { TypeBadge } from "./TypeBadge";
+import { UserInitials } from "./UserInitials";
 import { CONDITION_TAGS } from "../../lib/constants";
 
 function timeAgo(dateStr: string): string {
@@ -67,7 +68,12 @@ export function WorkItemCard({ item }: { item: WorkItem }) {
 
       <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
         <span>{timeAgo(item.updated_at)}</span>
-        {item.parent_id && <span title="Has parent">&#x1F517;</span>}
+        <div className="flex items-center gap-1">
+          {item.parent_id && <span title="Has parent">&#x1F517;</span>}
+          {item.assignee_name && (
+            <UserInitials name={item.assignee_name} />
+          )}
+        </div>
       </div>
     </div>
   );

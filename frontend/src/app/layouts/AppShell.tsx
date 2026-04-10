@@ -4,6 +4,7 @@ import { CreateWorkItemForm } from "../../components/forms/CreateWorkItemForm";
 import { LoadingState } from "../../components/common/LoadingState";
 import { useProjects } from "../../hooks/useProjects";
 import { useAuth } from "../../hooks/useAuth";
+import { useProjectRole } from "../../hooks/useProjectRole";
 
 export function AppShell() {
   const [createOpen, setCreateOpen] = useState(false);
@@ -13,6 +14,7 @@ export function AppShell() {
   const { projectId } = useParams<{ projectId: string }>();
   const { data: projectsData } = useProjects();
   const { user, logout } = useAuth();
+  const { canWrite } = useProjectRole(projectId);
 
   useEffect(() => {
     mainRef.current?.focus();
@@ -41,6 +43,7 @@ export function AppShell() {
         { to: `/projects/${projectId}/board`, label: "Board", end: false },
         { to: `/projects/${projectId}/list`, label: "List", end: false },
         { to: `/projects/${projectId}/graph`, label: "Graph", end: false },
+        { to: `/projects/${projectId}/members`, label: "Members", end: false },
       ]
     : [];
 
@@ -114,7 +117,7 @@ export function AppShell() {
             {currentProject?.name ?? "Projects"}
           </div>
           <div className="flex items-center gap-3">
-            {projectId && (
+            {projectId && canWrite && (
               <button
                 onClick={() => setCreateOpen(true)}
                 className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
@@ -149,7 +152,7 @@ export function AppShell() {
         </main>
       </div>
 
-      {projectId && (
+      {projectId && canWrite && (
         <CreateWorkItemForm
           open={createOpen}
           onClose={() => setCreateOpen(false)}

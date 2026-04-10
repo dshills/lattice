@@ -18,6 +18,7 @@ import { FilterPanel } from "../components/filters/FilterPanel";
 import { LoadingState } from "../components/common/LoadingState";
 import { ErrorState } from "../components/common/ErrorState";
 import { STATES } from "../lib/constants";
+import { useProjectRole } from "../hooks/useProjectRole";
 import type { WorkItem, WorkItemState } from "../lib/types";
 
 const ALL_STATES: WorkItemState[] = ["NotDone", "InProgress", "Completed"];
@@ -36,6 +37,7 @@ export function BoardPage() {
     page_size: 200,
   });
   const { updateMutation } = useWorkItemMutations(projectId);
+  const { canWrite } = useProjectRole(projectId);
   const [activeItem, setActiveItem] = useState<WorkItem | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -125,9 +127,9 @@ export function BoardPage() {
         )}
 
         <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
+          sensors={canWrite ? sensors : []}
+          onDragStart={canWrite ? handleDragStart : undefined}
+          onDragEnd={canWrite ? handleDragEnd : undefined}
         >
           <div className="flex gap-4 overflow-x-auto pb-4">
             {STATES.map((state) => (
@@ -140,6 +142,7 @@ export function BoardPage() {
                   !allowedTargets.has(state) &&
                   state !== activeItem.state
                 }
+                readOnly={!canWrite}
               />
             ))}
           </div>

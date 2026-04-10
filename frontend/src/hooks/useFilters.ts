@@ -17,6 +17,8 @@ export function useFilters() {
     if (tags) f.tags = tags;
     const parentId = searchParams.get("parent_id");
     if (parentId) f.parent_id = parentId;
+    const assigneeId = searchParams.get("assignee_id");
+    if (assigneeId) f.assignee_id = assigneeId;
     const isBlocked = searchParams.get("is_blocked");
     if (isBlocked) f.is_blocked = isBlocked === "true";
     const isReady = searchParams.get("is_ready");
@@ -67,6 +69,7 @@ export function useFilters() {
     if (filters.type) count++;
     if (filters.tags) count++;
     if (filters.parent_id) count++;
+    if (filters.assignee_id) count++;
     if (filters.is_blocked !== undefined) count++;
     if (filters.is_ready !== undefined) count++;
     return count;

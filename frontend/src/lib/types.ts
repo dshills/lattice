@@ -16,6 +16,7 @@ export interface Project {
 
 export interface ProjectWithCount extends Project {
   item_count: number;
+  role?: string;
 }
 
 export interface ProjectListResponse {
@@ -83,6 +84,7 @@ export interface ListFilter {
   tags?: string;
   type?: string;
   parent_id?: string;
+  assignee_id?: string;
   is_blocked?: boolean;
   is_ready?: boolean;
   page?: number;

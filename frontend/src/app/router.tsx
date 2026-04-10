@@ -24,6 +24,9 @@ const ItemDetailPage = lazy(() =>
     default: m.ItemDetailPage,
   })),
 );
+const MembersPage = lazy(() =>
+  import("../pages/MembersPage").then((m) => ({ default: m.MembersPage })),
+);
 const SettingsPage = lazy(() =>
   import("../pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );
@@ -71,6 +74,7 @@ export function AppRouter() {
           <Route path="board" element={<BoardPage />} />
           <Route path="list" element={<ListPage />} />
           <Route path="graph" element={<GraphPage />} />
+          <Route path="members" element={<MembersPage />} />
           <Route path="items/:id" element={<ItemDetailPage />} />
         </Route>
         <Route path="settings" element={<SettingsPage />} />
