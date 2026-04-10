@@ -90,3 +90,22 @@ type ListResult struct {
 	Page     int               `json:"page"`
 	PageSize int               `json:"page_size"`
 }
+
+// UserStore defines persistence operations for Users.
+type UserStore interface {
+	Create(ctx context.Context, user *domain.User, passwordHash string) error
+	GetByID(ctx context.Context, id string) (*domain.User, error)
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	UpdateDisplayName(ctx context.Context, id, displayName string) (*domain.User, error)
+	UpdatePassword(ctx context.Context, id, passwordHash string) error
+	Delete(ctx context.Context, id string) error
+}
+
+// MembershipStore defines persistence operations for ProjectMemberships.
+type MembershipStore interface {
+	Add(ctx context.Context, membership *domain.ProjectMembership) error
+	Remove(ctx context.Context, projectID, userID string) error
+	UpdateRole(ctx context.Context, projectID, userID string, role domain.ProjectRole) error
+	ListByProject(ctx context.Context, projectID string) ([]domain.ProjectMembership, error)
+	GetRole(ctx context.Context, projectID, userID string) (domain.ProjectRole, error)
+}

@@ -1,6 +1,9 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
 	ErrNotFound          = errors.New("not found")
@@ -9,4 +12,6 @@ var (
 	ErrInvalidInput      = errors.New("invalid input")
 	ErrValidation        = errors.New("validation error")
 	ErrConflict          = errors.New("conflict")
+	ErrUnauthorized      = errors.New("unauthorized")
+	ErrDuplicateEmail    = fmt.Errorf("%w: duplicate email", ErrConflict)
 )
